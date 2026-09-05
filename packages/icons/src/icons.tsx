@@ -188,3 +188,41 @@ export const IconSearch: React.FC<IconProps> = ({ size = 20, className = '', ...
     />
   </svg>
 );
+
+export const IconDay: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    className={className}
+    {...props}
+  >
+    {/* Stencil sun with notched rays and center disc */}
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M11 1h2v4h-2V1zm0 18h2v4h-2v-4zM1 11h4v2H1v-2zm18 0h4v2h-4v-2zM4.93 3.51 6.34 2.1l2.83 2.83-1.41 1.41L4.93 3.51zm12.73 12.73 1.41-1.41 2.83 2.83-1.41 1.41-2.83-2.83zM2.1 17.66l1.41-1.41 2.83 2.83-1.41 1.41L2.1 17.66zm12.73-12.73 1.41-1.41 2.83 2.83-1.41 1.41-2.83-2.83zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm-3 5a3 3 0 1 1 6 0 3 3 0 0 1-6 0z"
+    />
+  </svg>
+);
+
+export const IconNight: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    className={className}
+    {...props}
+  >
+    {/* Stenciled crescent moon with sharp terminal cuts */}
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12.3 2a10 10 0 0 0 9.7 12.7 10 10 0 1 1-12.7-9.7 7.9 7.9 0 0 0 3 0zm-2.3 3.1a8 8 0 1 0 7.8 10.3 8 8 0 0 1-7.8-10.3z"
+    />
+  </svg>
+);

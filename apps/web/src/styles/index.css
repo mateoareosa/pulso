@@ -1,8 +1,24 @@
+/* Self-hosted offline fonts */
+@import '@fontsource/archivo/400.css';
+@import '@fontsource/archivo/600.css';
+@import '@fontsource/archivo/700.css';
+@import '@fontsource/archivo/800.css';
+@import '@fontsource/archivo/900.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+@import '@fontsource/ibm-plex-mono/700.css';
+
 @import '@pulso/ui/tokens.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -10,8 +26,22 @@ body {
   background-color: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular figures for numbers, money, and codes */
+.font-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Standard accessible focus outline across interactive elements */
+:focus-visible {
+  outline: 2px solid var(--color-pulse-focus);
+  outline-offset: 2px;
 }
 
 @keyframes spin {
@@ -29,9 +59,25 @@ body {
 
 kbd {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
+  font-weight: 700;
   background: var(--color-surface-sunken);
-  border: 1px solid var(--color-border-bold);
-  padding: 1px 5px;
+  color: var(--color-ink);
+  border: 1px solid var(--color-ink);
+  padding: 2px 6px;
   border-radius: var(--radius-xs);
+  box-shadow: 0 1px 0 var(--color-ink);
+  display: inline-block;
+}
+
+/* Accessibility: respect user prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

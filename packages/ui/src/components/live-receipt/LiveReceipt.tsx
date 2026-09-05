@@ -44,7 +44,6 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
         height: '100%',
         minHeight: '480px',
         boxShadow: 'var(--shadow-receipt)',
-        fontFamily: 'var(--font-mono)',
         position: 'relative',
       }}
     >
@@ -57,30 +56,38 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
           justifyContent: 'space-between',
           alignItems: 'baseline',
           backgroundColor: 'var(--color-ticket-edge)',
+          fontFamily: 'var(--font-sans)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <IconSale size={18} />
-          <span style={{ fontWeight: 800, letterSpacing: '1px', fontSize: '0.9rem' }}>
+          <span style={{ fontWeight: 800, letterSpacing: '1px', fontSize: 'var(--text-sm)' }}>
             TICKET DE VENTA
           </span>
         </div>
-        <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+        <span
+          style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 700,
+            color: 'var(--color-ink-muted)',
+            textTransform: 'uppercase',
+          }}
+        >
           {isEmpty
             ? '0 ARTÍCULOS'
             : `${items.length} ${items.length === 1 ? 'ARTÍCULO' : 'ARTÍCULOS'}`}
         </span>
       </div>
 
-      {/* Items Section */}
+      {/* Items Scrollable Section */}
       <div
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '12px 16px',
+          padding: '8px 12px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px',
+          gap: '6px',
         }}
       >
         {isEmpty ? (
@@ -93,25 +100,30 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
               justifyContent: 'center',
               color: 'var(--color-ink-muted)',
               gap: '12px',
-              padding: '32px 0',
+              padding: '40px 0',
               textAlign: 'center',
+              fontFamily: 'var(--font-sans)',
             }}
           >
-            <IconBarcode size={36} />
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-ink)' }}>
+            <IconBarcode size={40} style={{ opacity: 0.7 }} />
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 'var(--text-base)',
+                color: 'var(--color-ink)',
+              }}
+            >
               Esperando productos...
             </div>
-            <p style={{ fontSize: '0.8rem', maxWidth: '240px', lineHeight: 1.4 }}>
-              Escaneá código de barras o buscá con{' '}
-              <kbd
-                style={{
-                  padding: '2px 6px',
-                  border: '1px solid var(--color-ink)',
-                  borderRadius: '2px',
-                }}
-              >
-                F2
-              </kbd>
+            <p
+              style={{
+                fontSize: 'var(--text-xs)',
+                maxWidth: '260px',
+                lineHeight: 1.5,
+                margin: 0,
+              }}
+            >
+              Escaneá código de barras o buscá con <kbd>F2</kbd>
             </p>
           </div>
         ) : (
@@ -126,43 +138,70 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   padding: '8px 10px',
-                  backgroundColor: isSelected ? 'var(--color-pulse-subtle)' : 'transparent',
-                  border: isSelected ? '1px solid var(--color-pulse)' : '1px solid transparent',
+                  backgroundColor: isSelected ? 'var(--color-pulse-soft)' : 'transparent',
+                  border: isSelected
+                    ? '1px solid var(--color-pulse-border)'
+                    : '1px solid transparent',
+                  borderLeft: isSelected
+                    ? '4px solid var(--color-pulse-solid)'
+                    : '4px solid transparent',
                   borderBottom: '1px dotted var(--color-border)',
                   cursor: 'pointer',
-                  transition: 'background-color 120ms ease',
+                  transition:
+                    'background-color var(--duration-fast) ease, border-color var(--duration-fast) ease',
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
+                {/* Product Name & Info (Humanist Sans) */}
+                <div style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
                   <div
                     style={{
+                      fontFamily: 'var(--font-sans)',
                       fontWeight: 700,
-                      fontSize: '0.9rem',
+                      fontSize: 'var(--text-sm)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
+                      color: 'var(--color-ink)',
                     }}
                   >
-                    <span style={{ opacity: 0.6, marginRight: '6px' }}>{idx + 1}.</span>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        opacity: 0.6,
+                        marginRight: '6px',
+                        fontSize: 'var(--text-xs)',
+                      }}
+                    >
+                      {idx + 1}.
+                    </span>
                     <span>{item.name}</span>
                   </div>
                   <div
                     style={{
-                      fontSize: '0.75rem',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--text-xs)',
                       color: 'var(--color-ink-muted)',
-                      marginTop: '2px',
+                      marginTop: '3px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
                     }}
                   >
-                    {item.quantity}x {item.unitPriceFormatted}
-                    {item.barcode && (
-                      <span style={{ marginLeft: '8px', opacity: 0.7 }}>[{item.barcode}]</span>
-                    )}
+                    <span>
+                      {item.quantity}x {item.unitPriceFormatted}
+                    </span>
+                    {item.barcode && <span style={{ opacity: 0.75 }}>[{item.barcode}]</span>}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Quantity Controls & Line Total (Tabular figures) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {onQuantityChange && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', gap: '3px' }}
+                      role="group"
+                      aria-label={`Modificar cantidad de ${item.name}`}
+                    >
                       <button
                         type="button"
                         onClick={(e) => {
@@ -170,12 +209,17 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
                           onQuantityChange(item.id, -1);
                         }}
                         style={{
-                          width: '24px',
-                          height: '24px',
+                          width: '28px',
+                          height: '28px',
                           border: '1px solid var(--color-ink)',
                           backgroundColor: 'var(--color-ticket)',
+                          color: 'var(--color-ink)',
                           cursor: 'pointer',
                           fontWeight: 700,
+                          fontSize: 'var(--text-sm)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                         aria-label={`Restar una unidad de ${item.name}`}
                       >
@@ -183,10 +227,11 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
                       </button>
                       <span
                         style={{
+                          fontFamily: 'var(--font-mono)',
                           fontWeight: 700,
-                          minWidth: '18px',
+                          minWidth: '22px',
                           textAlign: 'center',
-                          fontSize: '0.85rem',
+                          fontSize: 'var(--text-sm)',
                         }}
                       >
                         {item.quantity}
@@ -198,12 +243,17 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
                           onQuantityChange(item.id, 1);
                         }}
                         style={{
-                          width: '24px',
-                          height: '24px',
+                          width: '28px',
+                          height: '28px',
                           border: '1px solid var(--color-ink)',
                           backgroundColor: 'var(--color-ticket)',
+                          color: 'var(--color-ink)',
                           cursor: 'pointer',
                           fontWeight: 700,
+                          fontSize: 'var(--text-sm)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                         aria-label={`Sumar una unidad de ${item.name}`}
                       >
@@ -214,10 +264,13 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
 
                   <div
                     style={{
-                      fontWeight: 800,
-                      fontSize: '0.95rem',
-                      minWidth: '80px',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 700,
+                      fontSize: 'var(--text-base)',
+                      minWidth: '85px',
                       textAlign: 'right',
+                      letterSpacing: '-0.3px',
+                      fontVariantNumeric: 'tabular-nums',
                     }}
                   >
                     {item.totalPriceFormatted}
@@ -232,13 +285,17 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
                       }}
                       aria-label={`Quitar ${item.name}`}
                       style={{
+                        width: '28px',
+                        height: '28px',
                         background: 'none',
                         border: 'none',
-                        color: 'var(--color-tomato)',
+                        color: 'var(--color-tomato-text)',
                         cursor: 'pointer',
                         fontWeight: 900,
-                        padding: '2px 6px',
-                        fontSize: '1rem',
+                        fontSize: 'var(--text-lg)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                       title="Eliminar ítem"
                     >
@@ -252,12 +309,12 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
         )}
       </div>
 
-      {/* Grand Total Footer */}
+      {/* Grand Total Footer (Fixed at bottom) */}
       <div
         style={{
           borderTop: '2px solid var(--color-ink)',
           backgroundColor: 'var(--color-ticket-edge)',
-          padding: '16px',
+          padding: '16px 20px',
         }}
       >
         <div
@@ -267,13 +324,25 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
             alignItems: 'baseline',
           }}
         >
-          <span style={{ fontWeight: 900, fontSize: '1.2rem', letterSpacing: '1px' }}>TOTAL</span>
           <span
             style={{
-              fontWeight: 900,
-              fontSize: '1.8rem',
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 800,
+              fontSize: 'var(--text-base)',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+            }}
+          >
+            TOTAL
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 800,
+              fontSize: 'var(--text-3xl)',
               color: 'var(--color-ink)',
               letterSpacing: '-0.5px',
+              fontVariantNumeric: 'tabular-nums',
             }}
           >
             {totalFormatted}

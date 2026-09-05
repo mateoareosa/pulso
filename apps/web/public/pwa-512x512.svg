@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="64" fill="#0f172a"/>
+  <!-- Pulse green receipt silhouette -->
+  <path d="M128 100h256v120a40 40 0 0 1-40 40 40 40 0 0 1 40 40v92l-50-30-50 30-50-30-50 30-40-26V100z" fill="#22c55e"/>
+  <!-- Stenciled ticket cut lines -->
+  <rect x="170" y="160" width="172" height="26" rx="4" fill="#0f172a"/>
+  <rect x="170" y="216" width="108" height="26" rx="4" fill="#0f172a"/>
+</svg>

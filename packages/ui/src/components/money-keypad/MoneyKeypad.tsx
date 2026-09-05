@@ -24,7 +24,7 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
   const totalMoney = Money.fromCents(totalCents);
   const changeMoney = Money.fromCents(changeCents);
 
-  // Keyboard shortcut listener inside the tender modal
+  // Keyboard navigation inside the tender modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -71,26 +71,43 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
         backgroundColor: 'var(--color-surface)',
         color: 'var(--color-ink)',
         border: '3px solid var(--color-ink)',
-        padding: '20px',
-        maxWidth: '440px',
+        padding: '24px',
+        maxWidth: '460px',
         width: '100%',
-        boxShadow: 'var(--shadow-receipt)',
-        fontFamily: 'var(--font-mono)',
+        boxShadow: 'var(--shadow-modal)',
+        fontFamily: 'var(--font-sans)',
       }}
     >
       {/* Header with Amount to Collect */}
       <div
         style={{
           borderBottom: '2px solid var(--color-ink)',
-          paddingBottom: '12px',
+          paddingBottom: '14px',
           marginBottom: '16px',
           textAlign: 'center',
         }}
       >
-        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-ink-muted)' }}>
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 800,
+            letterSpacing: '1px',
+            color: 'var(--color-ink-muted)',
+            textTransform: 'uppercase',
+          }}
+        >
           TOTAL A COBRAR
         </div>
-        <div style={{ fontSize: '2.2rem', fontWeight: 900, color: 'var(--color-ink)' }}>
+        <div
+          style={{
+            fontSize: 'var(--text-3xl)',
+            fontWeight: 800,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-ink)',
+            letterSpacing: '-0.5px',
+            marginTop: '4px',
+          }}
+        >
           {totalMoney.format()}
         </div>
       </div>
@@ -108,13 +125,28 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
           style={{
             backgroundColor: 'var(--color-ticket)',
             border: '2px solid var(--color-ink)',
-            padding: '8px 12px',
+            padding: '10px 14px',
           }}
         >
-          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-ink-muted)' }}>
+          <div
+            style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              color: 'var(--color-ink-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
             Efectivo Recibido
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 900 }}>
+          <div
+            style={{
+              fontSize: 'var(--text-xl)',
+              fontWeight: 700,
+              fontFamily: 'var(--font-mono)',
+              marginTop: '4px',
+            }}
+          >
             {currencySymbol} {receivedInput || '0'}
           </div>
         </div>
@@ -122,20 +154,31 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
         <div
           style={{
             backgroundColor: isSufficient
-              ? 'var(--color-pulse-subtle)'
+              ? 'var(--color-pulse-soft)'
               : 'var(--color-surface-sunken)',
-            border: `2px solid ${isSufficient ? 'var(--color-pulse)' : 'var(--color-border)'}`,
-            padding: '8px 12px',
+            border: `2px solid ${isSufficient ? 'var(--color-pulse-border)' : 'var(--color-border)'}`,
+            padding: '10px 14px',
+            transition: 'background-color var(--duration-fast) ease',
           }}
         >
-          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-ink-muted)' }}>
+          <div
+            style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              color: isSufficient ? 'var(--color-ink)' : 'var(--color-ink-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
             Vuelto
           </div>
           <div
             style={{
-              fontSize: '1.4rem',
-              fontWeight: 900,
+              fontSize: 'var(--text-xl)',
+              fontWeight: 800,
+              fontFamily: 'var(--font-mono)',
               color: isSufficient ? 'var(--color-ink)' : 'var(--color-ink-subtle)',
+              marginTop: '4px',
             }}
           >
             {changeMoney.format()}
@@ -159,10 +202,12 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
             backgroundColor: 'var(--color-ink)',
             color: 'var(--color-ticket)',
             border: 'none',
-            padding: '8px 4px',
+            padding: '10px 4px',
             fontWeight: 800,
-            fontSize: '0.75rem',
+            fontSize: 'var(--text-xs)',
             cursor: 'pointer',
+            minHeight: '40px',
+            boxShadow: 'var(--shadow-key)',
           }}
         >
           EXACTO
@@ -173,10 +218,13 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
           style={{
             backgroundColor: 'var(--color-surface-sunken)',
             border: '1px solid var(--color-ink)',
-            padding: '8px 4px',
-            fontWeight: 800,
-            fontSize: '0.75rem',
+            padding: '10px 4px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
             cursor: 'pointer',
+            minHeight: '40px',
+            boxShadow: 'var(--shadow-key)',
           }}
         >
           +$1.000
@@ -187,10 +235,13 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
           style={{
             backgroundColor: 'var(--color-surface-sunken)',
             border: '1px solid var(--color-ink)',
-            padding: '8px 4px',
-            fontWeight: 800,
-            fontSize: '0.75rem',
+            padding: '10px 4px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
             cursor: 'pointer',
+            minHeight: '40px',
+            boxShadow: 'var(--shadow-key)',
           }}
         >
           +$2.000
@@ -201,10 +252,13 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
           style={{
             backgroundColor: 'var(--color-surface-sunken)',
             border: '1px solid var(--color-ink)',
-            padding: '8px 4px',
-            fontWeight: 800,
-            fontSize: '0.75rem',
+            padding: '10px 4px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--text-xs)',
             cursor: 'pointer',
+            minHeight: '40px',
+            boxShadow: 'var(--shadow-key)',
           }}
         >
           +$5.000
@@ -217,7 +271,7 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '8px',
-          marginBottom: '16px',
+          marginBottom: '18px',
         }}
       >
         {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '00', 'C'].map((k) => (
@@ -226,11 +280,12 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
             type="button"
             onClick={() => (k === 'C' ? handleClear() : handleDigit(k))}
             style={{
-              height: '44px',
-              fontSize: '1.2rem',
-              fontWeight: 800,
-              backgroundColor: k === 'C' ? 'var(--color-tomato-subtle)' : 'var(--color-surface)',
-              color: k === 'C' ? 'var(--color-tomato)' : 'var(--color-ink)',
+              height: '46px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--text-lg)',
+              fontWeight: 700,
+              backgroundColor: k === 'C' ? 'var(--color-tomato-soft)' : 'var(--color-surface)',
+              color: k === 'C' ? 'var(--color-tomato-solid)' : 'var(--color-ink)',
               border: '2px solid var(--color-ink)',
               boxShadow: 'var(--shadow-key)',
               cursor: 'pointer',
@@ -252,7 +307,7 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
             color: 'var(--color-ink)',
             border: '2px solid var(--color-ink)',
             fontWeight: 700,
-            fontSize: '0.85rem',
+            fontSize: 'var(--text-sm)',
             cursor: 'pointer',
           }}
         >
@@ -265,17 +320,20 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
           onClick={() => onConfirmTender({ receivedCents, changeCents })}
           style={{
             height: '48px',
-            backgroundColor: isSufficient ? 'var(--color-pulse)' : 'var(--color-surface-sunken)',
-            color: isSufficient ? 'var(--color-ink)' : 'var(--color-ink-subtle)',
+            backgroundColor: isSufficient
+              ? 'var(--color-pulse-solid)'
+              : 'var(--color-surface-sunken)',
+            color: isSufficient ? '#0f172a' : 'var(--color-ink-subtle)',
             border: '2px solid var(--color-ink)',
             fontWeight: 900,
-            fontSize: '0.95rem',
+            fontSize: 'var(--text-sm)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
             cursor: isSufficient ? 'pointer' : 'not-allowed',
             letterSpacing: '0.5px',
+            boxShadow: isSufficient ? 'var(--shadow-key)' : 'none',
           }}
         >
           <IconCheck size={18} />

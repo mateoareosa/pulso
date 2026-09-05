@@ -1,74 +1,177 @@
 /* Pulso Design Tokens: "Mostrador vivo" */
 :root {
   /* Color Palette (OKLCH) */
-  --color-ticket: oklch(0.97 0.015 85);
-  --color-ticket-edge: oklch(0.91 0.025 85);
-  --color-ink: oklch(0.2 0.03 160);
-  --color-ink-muted: oklch(0.48 0.02 160);
-  --color-ink-subtle: oklch(0.68 0.015 160);
+  --color-ticket: oklch(0.975 0.012 85);
+  --color-ticket-edge: oklch(0.92 0.02 85);
+  --color-ink: oklch(0.18 0.03 160);
+  --color-ink-muted: oklch(0.44 0.02 160);
+  --color-ink-subtle: oklch(0.62 0.015 160);
 
-  --color-pulse: oklch(0.78 0.22 135);
+  /* Pulse Green — strictly reserved for primary actions, active selection, success */
+  --color-pulse-solid: oklch(0.78 0.22 135);
   --color-pulse-hover: oklch(0.72 0.24 135);
-  --color-pulse-subtle: oklch(0.94 0.07 135);
+  --color-pulse-soft: oklch(0.95 0.05 135);
+  --color-pulse-border: oklch(0.7 0.18 135);
+  --color-pulse-focus: oklch(0.78 0.22 135);
 
-  --color-amber: oklch(0.75 0.18 65);
-  --color-amber-subtle: oklch(0.94 0.06 65);
+  /* Operational Alert / Amber */
+  --color-amber-solid: oklch(0.75 0.18 65);
+  --color-amber-soft: oklch(0.95 0.05 65);
+  --color-amber-border: oklch(0.68 0.16 65);
 
-  --color-tomato: oklch(0.6 0.22 25);
-  --color-tomato-hover: oklch(0.54 0.24 25);
-  --color-tomato-subtle: oklch(0.93 0.06 25);
+  /* Operational Error / Void / Tomato */
+  --color-tomato-solid: oklch(0.55 0.22 25);
+  --color-tomato-hover: oklch(0.5 0.24 25);
+  --color-tomato-soft: oklch(0.94 0.06 25);
+  --color-tomato-border: oklch(0.65 0.2 25);
+  --color-tomato-text: oklch(0.48 0.22 25);
 
+  /* Surfaces & Structural Borders */
   --color-surface: oklch(0.99 0.005 85);
-  --color-surface-sunken: oklch(0.92 0.018 85);
-  --color-border: oklch(0.84 0.02 85);
-  --color-border-bold: oklch(0.2 0.03 160);
+  --color-surface-sunken: oklch(0.93 0.015 85);
+  --color-border: oklch(0.82 0.02 85);
+  --color-border-bold: oklch(0.18 0.03 160);
 
-  /* Typography */
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  /* Typography Pair */
+  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Radii - Sharp industrial angles with subtle tactile softness */
+  /* Strict Operational Type Scale (Auxiliary minimum: 12px; Main: 14-16px) */
+  --text-xs: 0.75rem; /* 12px - auxiliary codes, hotkeys, status tags */
+  --text-sm: 0.875rem; /* 14px - secondary labels, line item details */
+  --text-base: 1rem; /* 16px - primary operational text, product titles */
+  --text-lg: 1.125rem; /* 18px - section titles, modal headers */
+  --text-xl: 1.25rem; /* 20px - keypad totals */
+  --text-2xl: 1.5rem; /* 24px - modal keypad figures */
+  --text-3xl: 2rem; /* 32px - dominant grand totals */
+
+  /* Operational Ribbon Tokens */
+  --color-ribbon-bg: oklch(0.18 0.03 160);
+  --color-ribbon-text: oklch(0.975 0.012 85);
+  --color-ribbon-muted: oklch(0.72 0.02 160);
+  --color-ribbon-border: oklch(0.14 0.03 160);
+
+  /* Radii - Industrial sharp troquel with 2-4px tactile softness */
   --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-ticket: 0px;
 
-  /* Shadows - Crisp hard-edged stamps rather than blurry floating blur */
+  /* Shadows - Crisp hard-edged stamps (no blurry SaaS glow) */
   --shadow-key: 0 2px 0 var(--color-ink);
-  --shadow-key-active: 0 0 0 transparent;
-  --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.08);
+  --shadow-key-pressed: 0 0 0 transparent;
+  --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.09);
+  --shadow-modal: 0 12px 32px rgba(15, 23, 42, 0.35);
 
-  /* Motion */
-  --duration-pulse: 150ms;
-  --duration-receipt-insert: 180ms;
+  /* Motion - Transform and opacity only */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
   --ease-tactile: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Night / Petroleum Shift Theme */
 [data-theme='night'] {
-  --color-ticket: oklch(0.22 0.025 240);
-  --color-ticket-edge: oklch(0.18 0.025 240);
-  --color-ink: oklch(0.96 0.01 85);
-  --color-ink-muted: oklch(0.72 0.015 160);
-  --color-ink-subtle: oklch(0.5 0.02 160);
+  --color-ticket: oklch(0.2 0.025 240);
+  --color-ticket-edge: oklch(0.16 0.025 240);
+  --color-ink: oklch(0.97 0.01 85);
+  --color-ink-muted: oklch(0.74 0.015 160);
+  --color-ink-subtle: oklch(0.55 0.02 160);
 
-  --color-pulse: oklch(0.82 0.22 135);
+  --color-pulse-solid: oklch(0.82 0.22 135);
   --color-pulse-hover: oklch(0.88 0.22 135);
-  --color-pulse-subtle: oklch(0.28 0.08 135);
+  --color-pulse-soft: oklch(0.24 0.06 135);
+  --color-pulse-border: oklch(0.75 0.18 135);
+  --color-pulse-focus: oklch(0.82 0.22 135);
 
-  --color-amber: oklch(0.8 0.18 65);
-  --color-amber-subtle: oklch(0.3 0.06 65);
+  --color-amber-solid: oklch(0.8 0.18 65);
+  --color-amber-soft: oklch(0.26 0.06 65);
+  --color-amber-border: oklch(0.72 0.16 65);
 
-  --color-tomato: oklch(0.68 0.22 25);
-  --color-tomato-subtle: oklch(0.28 0.07 25);
+  --color-tomato-solid: oklch(0.5 0.22 25);
+  --color-tomato-hover: oklch(0.45 0.24 25);
+  --color-tomato-soft: oklch(0.26 0.07 25);
+  --color-tomato-border: oklch(0.68 0.2 25);
+  --color-tomato-text: oklch(0.78 0.2 25);
 
-  --color-surface: oklch(0.16 0.025 240);
-  --color-surface-sunken: oklch(0.12 0.025 240);
+  --color-surface: oklch(0.14 0.025 240);
+  --color-surface-sunken: oklch(0.1 0.025 240);
   --color-border: oklch(0.28 0.025 240);
-  --color-border-bold: oklch(0.85 0.02 85);
+  --color-border-bold: oklch(0.88 0.02 85);
+
+  --color-ribbon-bg: oklch(0.1 0.025 240);
+  --color-ribbon-text: oklch(0.97 0.01 85);
+  --color-ribbon-muted: oklch(0.7 0.015 160);
+  --color-ribbon-border: oklch(0.25 0.025 240);
 
   --shadow-key: 0 2px 0 var(--color-ink);
-  --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.5);
+  --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Operational Ribbon Responsive Container Queries */
+.pulso-ribbon-wrapper {
+  container-type: inline-size;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@container (max-width: 680px) {
+  .pulso-ribbon-operator,
+  .pulso-ribbon-op-sep {
+    display: none !important;
+  }
+  .pulso-ribbon-cash-label {
+    display: none !important;
+  }
+}
+
+@container (max-width: 520px) {
+  .pulso-ribbon-nav button {
+    padding: 4px 6px !important;
+    font-size: 0.7rem !important;
+  }
+}
+
+/* Component Catalog Tabs Responsive Layout */
+.pulso-catalog-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1100px) {
+  .pulso-catalog-tabs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.pulso-catalog-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10px 14px;
+  border: 2px solid var(--color-ink);
+  cursor: pointer;
+  font-weight: 800;
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  letter-spacing: 0.6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  white-space: normal;
+  word-break: break-word;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pulso-catalog-tab-btn:focus-visible {
+  outline: 2px solid var(--color-pulse-focus);
+  outline-offset: 2px;
 }

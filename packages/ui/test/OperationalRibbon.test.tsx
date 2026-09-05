@@ -45,4 +45,51 @@ describe('OperationalRibbon Component', () => {
 
     expect(screen.getByText('SINCRONIZANDO')).toBeDefined();
   });
+
+  it('renders theme toggle with IconNight in light mode and calls onToggleTheme on click', () => {
+    let toggled = false;
+    render(
+      <OperationalRibbon
+        connectionStatus="online"
+        pendingSyncCount={0}
+        shiftLabel="Turno Mañana"
+        theme="light"
+        onToggleTheme={() => {
+          toggled = true;
+        }}
+      />
+    );
+
+    const themeBtn = screen.getByRole('button', { name: 'Cambiar a modo noche' });
+    expect(themeBtn).toBeDefined();
+    expect(themeBtn.textContent).toContain('DÍA');
+
+    // Icon should be decorative
+    const svg = themeBtn.querySelector('svg');
+    expect(svg).toBeDefined();
+    expect(svg?.getAttribute('aria-hidden')).toBe('true');
+
+    themeBtn.click();
+    expect(toggled).toBe(true);
+  });
+
+  it('renders theme toggle with IconDay in night mode', () => {
+    render(
+      <OperationalRibbon
+        connectionStatus="online"
+        pendingSyncCount={0}
+        shiftLabel="Turno Mañana"
+        theme="night"
+        onToggleTheme={() => {}}
+      />
+    );
+
+    const themeBtn = screen.getByRole('button', { name: 'Cambiar a modo día' });
+    expect(themeBtn).toBeDefined();
+    expect(themeBtn.textContent).toContain('NOCHE');
+
+    const svg = themeBtn.querySelector('svg');
+    expect(svg).toBeDefined();
+    expect(svg?.getAttribute('aria-hidden')).toBe('true');
+  });
 });

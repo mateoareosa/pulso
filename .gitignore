@@ -7,5 +7,8 @@ coverage
 *.log
 .DS_Store
 *.local
+test-results/
+playwright-report/
+e2e/screenshots/
 .env
 !.env.example
