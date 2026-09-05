@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { SalesScreen } from './features/sales/components/SalesScreen';
-import { ComponentCatalog, OperationalRibbon } from '@pulso/ui';
+import { OperationalRibbon } from '@pulso/ui';
 import { useSalesStore } from './features/sales/store/sales.store';
 import { PwaInstallPrompt } from './features/pwa/PwaInstallPrompt';
 
 export const App: React.FC = () => {
-  const [view, setView] = useState<'sales' | 'catalog'>('sales');
   const [theme, setTheme] = useState<'light' | 'night'>('light');
   const { connectionStatus, pendingSyncCount, toggleConnection, syncPendingSales } =
     useSalesStore();
@@ -31,9 +30,6 @@ export const App: React.FC = () => {
         pendingSyncCount={pendingSyncCount}
         shiftLabel="Turno Tarde #14"
         operatorName="Mateo (Cajero)"
-        expectedCashFormatted="$ 45.200,00"
-        activeSection={view}
-        onSectionChange={setView}
         onToggleConnection={toggleConnection}
         onSyncClick={syncPendingSales}
         theme={theme}
@@ -44,11 +40,7 @@ export const App: React.FC = () => {
 
       {/* Main View Area */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {view === 'sales' ? (
-          <SalesScreen />
-        ) : (
-          <ComponentCatalog theme={theme} onToggleTheme={toggleTheme} />
-        )}
+        <SalesScreen />
       </div>
     </div>
   );

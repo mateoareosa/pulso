@@ -16,35 +16,53 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
   currencySymbol = '$',
 }) => {
   const [receivedInput, setReceivedInput] = useState<string>('');
+  const isSubmittingRef = React.useRef(false);
+  const isCancellingRef = React.useRef(false);
 
-  const receivedCents = receivedInput ? Math.round(parseFloat(receivedInput) * 100) : 0;
+  const normalizedInput = receivedInput.replace(',', '.');
+  const receivedCents = normalizedInput ? Math.round(parseFloat(normalizedInput) * 100) : 0;
   const changeCents = Math.max(0, receivedCents - totalCents);
   const isSufficient = receivedCents >= totalCents;
 
   const totalMoney = Money.fromCents(totalCents);
   const changeMoney = Money.fromCents(changeCents);
 
-  // Keyboard navigation inside the tender modal
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCancel();
-      } else if (e.key === 'Enter') {
-        if (isSufficient) {
-          e.preventDefault();
-          onConfirmTender({ receivedCents, changeCents });
+  const appendDigitOrSeparator = (char: string) => {
+    setReceivedInput((prev) => {
+      // Decimal separator
+      if (char === '.' || char === ',') {
+        if (prev.includes('.') || prev.includes(',')) return prev;
+        return prev ? `${prev}.` : '0.';
+      }
+
+      // Check max 2 decimal places if dot is already present
+      const dotIdx = prev.indexOf('.');
+      if (dotIdx !== -1 && prev.length - dotIdx > 2) {
+        return prev;
+      }
+
+      // Don't allow multiple leading zeros
+      if (prev === '0') {
+        if (char === '0' || char === '00') return '0';
+        return char;
+      }
+
+      if (char === '00') {
+        if (!prev) return '0';
+        if (dotIdx !== -1) {
+          const decimalsLeft = 2 - (prev.length - dotIdx - 1);
+          if (decimalsLeft < 2) return prev;
         }
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSufficient, receivedCents, changeCents, onCancel, onConfirmTender]);
 
-  const handleDigit = (digit: string) => {
+      return prev + char;
+    });
+  };
+
+  const handleBackspace = () => {
     setReceivedInput((prev) => {
-      if (digit === '.' && prev.includes('.')) return prev;
-      return prev + digit;
+      if (prev.length <= 1) return '';
+      return prev.slice(0, -1);
     });
   };
 
@@ -52,8 +70,71 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
     setReceivedInput('');
   };
 
+  // Keyboard navigation inside the tender modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Stop propagation of all handled keys so background screen shortcuts do not activate
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat || isCancellingRef.current) return;
+        isCancellingRef.current = true;
+        onCancel();
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat || isSubmittingRef.current) return;
+        if (isSufficient) {
+          isSubmittingRef.current = true;
+          onConfirmTender({ receivedCents, changeCents });
+        }
+        return;
+      }
+
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleBackspace();
+        return;
+      }
+
+      if (e.key === 'Delete') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleClear();
+        return;
+      }
+
+      if (e.key === '.' || e.key === ',' || e.key === 'Decimal') {
+        e.preventDefault();
+        e.stopPropagation();
+        appendDigitOrSeparator('.');
+        return;
+      }
+
+      // 0-9 digits
+      const digitMatch = e.key.match(/^[0-9]$/);
+      if (digitMatch) {
+        e.preventDefault();
+        e.stopPropagation();
+        appendDigitOrSeparator(digitMatch[0]);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSufficient, receivedCents, changeCents, onCancel, onConfirmTender]);
+
+  const handleDigit = (digit: string) => {
+    appendDigitOrSeparator(digit);
+  };
+
   const handleQuickAdd = (amount: number) => {
-    const currentDecimal = receivedInput ? parseFloat(receivedInput) : 0;
+    const currentDecimal = normalizedInput ? parseFloat(normalizedInput) : 0;
     const nextVal = currentDecimal + amount;
     setReceivedInput(nextVal.toString());
   };
@@ -140,6 +221,7 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
             Efectivo Recibido
           </div>
           <div
+            data-testid="received-amount"
             style={{
               fontSize: 'var(--text-xl)',
               fontWeight: 700,

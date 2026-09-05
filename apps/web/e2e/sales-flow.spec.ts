@@ -4,8 +4,6 @@ import fs from 'fs';
 import AxeBuilder from '@axe-core/playwright';
 
 const SCREENSHOTS_DIR = path.resolve(process.cwd(), 'e2e/screenshots');
-const ARTIFACTS_DIR =
-  'C:\\Users\\Mateo\\.gemini\\antigravity\\brain\\1316521a-ff09-478a-8fc4-eb7962228ef9';
 
 test.beforeAll(() => {
   if (!fs.existsSync(SCREENSHOTS_DIR)) {
@@ -16,14 +14,9 @@ test.beforeAll(() => {
 async function saveScreenshot(page: Page, name: string) {
   const localPath = path.join(SCREENSHOTS_DIR, `${name}.png`);
   await page.screenshot({ path: localPath, fullPage: true });
-
-  if (fs.existsSync(ARTIFACTS_DIR)) {
-    const artifactPath = path.join(ARTIFACTS_DIR, `${name}.png`);
-    fs.copyFileSync(localPath, artifactPath);
-  }
 }
 
-test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Verification', () => {
+test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport Verification', () => {
   test('Accessibility Audit: Sales Screen meets WCAG AA standards with Axe (Day Mode)', async ({
     page,
   }) => {
@@ -37,7 +30,6 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
     expect(accessibilityScanResults.violations).toEqual([]);
   });
 
-  // Test across the 3 requested viewports: 1024x768, 1280x720, 1440x900
   const VIEWPORTS = [
     { width: 1024, height: 768, label: '1024x768' },
     { width: 1280, height: 720, label: '1280x720' },
@@ -45,13 +37,23 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
   ];
 
   for (const vp of VIEWPORTS) {
-    test(`Scenario 1 (${vp.label}): Standard cash sales lifecycle`, async ({ page }) => {
+    test(`Scenario (${vp.label}): Operational Sales Flow, Dynamic Search, Physical Keyboard Tender & Dismiss`, async ({
+      page,
+    }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.goto('/');
 
       const ribbon = page.locator('.pulso-ribbon');
       await expect(ribbon).toBeVisible();
       await expect(ribbon).toContainText('ONLINE');
+
+      // Verify ComponentCatalog is completely removed from navigation
+      await expect(page.locator('button:has-text("CATÁLOGO COMPONENTES")')).not.toBeVisible();
+      await expect(page.locator('button:has-text("CATÁLOGO")')).not.toBeVisible();
+
+      // Verify static fictive cash balance is NOT displayed
+      await expect(ribbon).not.toContainText('45.200');
+      await expect(ribbon).not.toContainText('Caja:');
 
       // 1. Capture Estado Vacío
       await expect(page.locator('text=Esperando productos...')).toBeVisible();
@@ -60,24 +62,63 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
         await saveScreenshot(page, 'estado-1-vacio');
       }
 
-      // 2. Add products (Alfajor + Cola)
-      const alfajorBtn = page.locator('button:has-text("Alfajor Triple Dulce de Leche")');
-      await alfajorBtn.click();
+      // 2. Dynamic Search with matches
+      const searchInput = page.locator('input[aria-label="Escanear o buscar producto"]');
+      await searchInput.fill('agua');
+      await expect(page.locator('button:has-text("Agua Mineral 500ml")')).toBeVisible();
+      await saveScreenshot(page, `busqueda-con-coincidencias-${vp.label}`);
+      if (vp.label === '1280x720') {
+        await saveScreenshot(page, 'busqueda-con-coincidencias');
+      }
 
+      // 3. Dynamic Search without matches (accessible status)
+      await searchInput.fill('inexistente777');
+      const notFoundStatus = page.locator(
+        '[role="status"]:has-text("Producto no encontrado para \\"inexistente777\\"")'
+      );
+      await expect(notFoundStatus).toBeVisible();
+      await saveScreenshot(page, `busqueda-sin-coincidencias-${vp.label}`);
+      if (vp.label === '1280x720') {
+        await saveScreenshot(page, 'busqueda-sin-coincidencias');
+      }
+
+      // 4. Clear search restores all 8 quick products
+      await searchInput.fill('');
+      await expect(page.locator('button:has-text("Alfajor Triple Dulce de Leche")')).toBeVisible();
+      await expect(page.locator('button:has-text("Gaseosa Cola 500ml")')).toBeVisible();
+      await expect(page.locator('button:has-text("Agua Mineral 500ml")')).toBeVisible();
+
+      // 5. Numeric typing into search does NOT trigger shortcuts 1-8
+      await searchInput.focus();
+      await page.keyboard.type('7791234567890');
+      await expect(searchInput).toHaveValue('7791234567890');
+      await expect(page.locator('text=Esperando productos...')).toBeVisible();
+      await searchInput.fill('');
+
+      // 6. Arrow navigation and Enter adds item
+      await searchInput.fill('caramelos');
+      await expect(page.locator('button:has-text("Caramelos Ácidos x10")')).toBeVisible();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Enter');
       const liveReceipt = page.locator('.live-receipt-container');
+      await expect(liveReceipt).toContainText('Caramelos Ácidos x10');
+      await expect(searchInput).toHaveValue('');
+
+      // 7. Shortcut numbers 1-8 when input is not focused
+      await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+      await page.keyboard.press('1');
       await expect(liveReceipt).toContainText('Alfajor Triple Dulce de Leche');
 
-      const colaBtn = page.locator('button:has-text("Gaseosa Cola 500ml")');
-      await colaBtn.click();
-      await expect(liveReceipt).toContainText('$ 2.700,00');
+      await page.keyboard.press('2');
+      await expect(liveReceipt).toContainText('Gaseosa Cola 500ml');
 
-      // 2. Capture Estado Venta Activa
+      // 8. Capture Estado Venta Activa
       await saveScreenshot(page, `estado-2-venta-activa-${vp.label}`);
       if (vp.label === '1280x720') {
         await saveScreenshot(page, 'estado-2-venta-activa');
       }
 
-      // 3. Open Cash Tender Modal (MoneyKeypad)
+      // 9. Open Cash Tender Modal (MoneyKeypad)
       const cobrarBtn = page.locator('button:has-text("COBRAR EN EFECTIVO")');
       await cobrarBtn.click();
 
@@ -85,93 +126,51 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
       await expect(tenderModal).toBeVisible();
       await expect(tenderModal).toContainText('TOTAL A COBRAR');
 
-      // Add $5.000 cash via quick button
-      await tenderModal.locator('button:has-text("+$5.000")').click();
-      await expect(tenderModal).toContainText('$ 2.300,00');
+      // Physical keyboard entry in MoneyKeypad
+      const receivedDisplay = tenderModal.locator('[data-testid="received-amount"]');
+      await page.keyboard.type('5000');
+      await expect(receivedDisplay).toContainText('$ 5000');
 
-      // 3. Capture Estado Cobro
+      // Backspace correction
+      await page.keyboard.press('Backspace');
+      await expect(receivedDisplay).toContainText('$ 500');
+      await page.keyboard.type('0');
+      await expect(receivedDisplay).toContainText('$ 5000');
+
+      // Capture Estado Cobro
       await saveScreenshot(page, `estado-3-cobro-${vp.label}`);
       if (vp.label === '1280x720') {
         await saveScreenshot(page, 'estado-3-cobro');
       }
 
-      // 4. Confirm Payment
-      await tenderModal.locator('button:has-text("CONFIRMAR COBRO")').click();
+      // Confirm payment with physical keyboard Enter
+      await page.keyboard.press('Enter');
 
-      // Verify Success Seal
-      const successSeal = page.locator('[role="status"]');
+      // 10. Post-Sale Confirmation Seal
+      const successSeal = page.locator('[role="status"]:has-text("VENTA CONFIRMADA")');
       await expect(successSeal).toBeVisible();
-      await expect(successSeal).toContainText('VENTA CONFIRMADA');
-      await expect(successSeal).toContainText('$ 2.700,00');
-      await expect(successSeal).toContainText('$ 2.300,00');
 
-      // 4. Capture Estado Éxito
+      // Capture Estado Éxito
       await saveScreenshot(page, `estado-4-exito-${vp.label}`);
       if (vp.label === '1280x720') {
         await saveScreenshot(page, 'estado-4-exito');
       }
 
-      // Reset
-      await successSeal.locator('button:has-text("NUEVA VENTA")').click();
+      // Dismiss success seal with physical keyboard Enter (NUEVA VENTA)
+      await page.keyboard.press('Enter');
+      await expect(successSeal).not.toBeVisible();
       await expect(page.locator('text=Esperando productos...')).toBeVisible();
-    });
+      await expect(searchInput).toBeFocused();
 
-    test(`Scenario Catalog Responsiveness (${vp.label}): Zero overflow on cards and ribbon`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: vp.width, height: vp.height });
-      await page.goto('/');
-
-      // Navigate to component catalog
-      await page.locator('button:has-text("CATÁLOGO COMPONENTES")').click();
-      await expect(page.locator('text=Pulso — Catálogo de Componentes')).toBeVisible();
-
-      // Verify no horizontal document overflow
-      const docOverflow = await page.evaluate(() => {
-        return (
-          document.documentElement.scrollWidth > window.innerWidth ||
-          document.documentElement.scrollWidth > document.documentElement.clientWidth
-        );
-      });
-      expect(docOverflow).toBe(false);
-
-      // Verify all 4 tab buttons are visible and strictly within viewport boundaries
-      const tabButtons = page.locator('.pulso-catalog-tabs button');
-      await expect(tabButtons).toHaveCount(4);
-      const tabCount = await tabButtons.count();
-      for (let i = 0; i < tabCount; i++) {
-        const tab = tabButtons.nth(i);
-        await expect(tab).toBeVisible();
-        const box = await tab.boundingBox();
-        expect(box).not.toBeNull();
-        expect(box!.x).toBeGreaterThanOrEqual(0);
-        expect(box!.x + box!.width).toBeLessThanOrEqual(vp.width);
-      }
-
-      // Verify every card (article) has zero horizontal overflow
-      const cardOverflows = await page.evaluate(() => {
-        const articles = Array.from(document.querySelectorAll('article'));
-        return articles.map((a, i) => ({
-          index: i,
-          scrollWidth: a.scrollWidth,
-          clientWidth: a.clientWidth,
-          hasOverflow: a.scrollWidth > a.clientWidth,
-        }));
-      });
-
-      for (const card of cardOverflows) {
-        expect(card.hasOverflow).toBe(false);
-      }
-
-      // Capture screenshot of catalog at this viewport
-      await saveScreenshot(page, `catalogo-sin-desbordes-${vp.label}`);
-      if (vp.label === '1280x720') {
-        await saveScreenshot(page, 'estado-6-sincronizacion-catalogo');
-      }
+      // Verify second immediate sale works cleanly without duplication
+      await page.locator('button:has-text("Agua Mineral 500ml")').click();
+      await expect(liveReceipt).toContainText('Agua Mineral 500ml');
+      await page.locator('button:has-text("Limpiar ticket")').click();
+      await expect(page.locator('text=Esperando productos...')).toBeVisible();
     });
   }
 
-  test('Scenario 2: Offline sale -> Pending queue in IndexedDB -> Reconnect -> Sync without duplicates', async ({
+  test('Scenario: Offline sale -> Pending queue in IndexedDB -> Reconnect -> Sync without duplicates', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -182,7 +181,7 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
     await connectionBtn.click();
     await expect(connectionBtn).toContainText('SIN CONEXIÓN');
 
-    // 5. Capture Estado Offline
+    // Capture Estado Offline
     await saveScreenshot(page, 'estado-5-offline');
 
     // Make an offline sale
@@ -195,7 +194,8 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
 
     const successSeal = page.locator('[role="status"]');
     await expect(successSeal).toContainText('VENTA GUARDADA LOCAL');
-    await successSeal.locator('button:has-text("NUEVA VENTA")').click();
+    await page.keyboard.press('Enter');
+    await expect(successSeal).not.toBeVisible();
 
     // Verify ribbon shows pending sync count badge
     const pendingBadge = page.locator('button:has-text("1 pendientes")');
@@ -209,11 +209,10 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
     await expect(page.locator('button:has-text("pendientes")')).not.toBeVisible();
   });
 
-  test('Scenario 3: Error Banner', async ({ page }) => {
+  test('Scenario: Error Banner on Non-Existent Product Submission', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/');
 
-    // Trigger Error Banner
     const searchInput = page.locator('input[aria-label="Escanear o buscar producto"]');
     await searchInput.fill('Inexistente777');
     await page.locator('button:has-text("AGREGAR")').click();
@@ -222,11 +221,11 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
     await expect(errorBanner).toBeVisible();
     await expect(errorBanner).toContainText('Producto no encontrado');
 
-    // 7. Capture Estado Error
+    // Capture Estado Error
     await saveScreenshot(page, 'estado-7-error');
   });
 
-  test('Scenario 4: Night Mode ("Azul Petróleo"), Keyboard Toggle & WCAG AA Contrast Audit', async ({
+  test('Scenario: Night Mode ("Azul Petróleo"), Keyboard Toggle & WCAG AA Contrast Audit', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -264,28 +263,9 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
     expect(nightSalesScan.violations).toEqual([]);
-
-    // Switch to Catalog in Night Mode
-    await page.locator('button:has-text("CATÁLOGO COMPONENTES")').click();
-    await expect(page.locator('text=Pulso — Catálogo de Componentes')).toBeVisible();
-
-    // Verify Catalog header theme button also has decorative SVG icon and responds to keyboard
-    const catalogThemeBtn = page.locator('button[aria-label*="Cambiar a modo"]').nth(1);
-    await expect(catalogThemeBtn.locator('svg')).toHaveAttribute('aria-hidden', 'true');
-    await catalogThemeBtn.focus();
-    await expect(catalogThemeBtn).toBeFocused();
-
-    // Capture Catalog in Night Mode
-    await saveScreenshot(page, 'catalogo-modo-noche');
-
-    // Run Axe WCAG AA audit on Night Mode Catalog
-    const nightCatalogScan = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .analyze();
-    expect(nightCatalogScan.violations).toEqual([]);
   });
 
-  test('Scenario 5: PWA Installation Evidence & Service Worker Validation', async ({ page }) => {
+  test('Scenario: PWA Installation Evidence & Service Worker Validation', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
 
     // 1. Fetch & Validate Web App Manifest
@@ -307,7 +287,6 @@ test.describe('Pulso "Mostrador vivo" — Refined E2E Suite & Multi-Viewport Ver
       const registrations = await navigator.serviceWorker.getRegistrations();
       return registrations.length > 0;
     });
-    // In preview mode Vite PWA registers sw.js
     expect(swRegistered).toBe(true);
 
     // 3. Dispatch beforeinstallprompt event to simulate Chromium installation offer

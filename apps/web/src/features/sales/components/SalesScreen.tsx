@@ -3,82 +3,7 @@ import { useSalesStore } from '../store/sales.store';
 import { LiveReceipt, MoneyKeypad } from '@pulso/ui';
 import { Money } from '@pulso/domain';
 import { IconSearch, IconBarcode, IconCheck, IconAlert } from '@pulso/icons';
-
-interface QuickProduct {
-  productId: string;
-  name: string;
-  category: string;
-  barcode: string;
-  unitPriceCents: number;
-  shortcutNumber: number;
-}
-
-const QUICK_PRODUCTS: QuickProduct[] = [
-  {
-    productId: 'prod-01',
-    name: 'Alfajor Triple Dulce de Leche',
-    category: 'GOLOSINAS',
-    barcode: '779001',
-    unitPriceCents: 120000,
-    shortcutNumber: 1,
-  },
-  {
-    productId: 'prod-02',
-    name: 'Gaseosa Cola 500ml',
-    category: 'BEBIDAS',
-    barcode: '779002',
-    unitPriceCents: 150000,
-    shortcutNumber: 2,
-  },
-  {
-    productId: 'prod-03',
-    name: 'Agua Mineral 500ml',
-    category: 'BEBIDAS',
-    barcode: '779003',
-    unitPriceCents: 100000,
-    shortcutNumber: 3,
-  },
-  {
-    productId: 'prod-04',
-    name: 'Turrón de Maní',
-    category: 'GOLOSINAS',
-    barcode: '779004',
-    unitPriceCents: 45000,
-    shortcutNumber: 4,
-  },
-  {
-    productId: 'prod-05',
-    name: 'Chicles Menta Fuerte',
-    category: 'GOLOSINAS',
-    barcode: '779005',
-    unitPriceCents: 60000,
-    shortcutNumber: 5,
-  },
-  {
-    productId: 'prod-06',
-    name: 'Caramelos Ácidos x10',
-    category: 'GOLOSINAS',
-    barcode: '779006',
-    unitPriceCents: 80000,
-    shortcutNumber: 6,
-  },
-  {
-    productId: 'prod-07',
-    name: 'Galletitas Rellenas Vainilla',
-    category: 'SNACKS',
-    barcode: '779007',
-    unitPriceCents: 180000,
-    shortcutNumber: 7,
-  },
-  {
-    productId: 'prod-08',
-    name: 'Barra de Cereal Frutilla',
-    category: 'SNACKS',
-    barcode: '779008',
-    unitPriceCents: 90000,
-    shortcutNumber: 8,
-  },
-];
+import { QUICK_PRODUCTS, searchProducts } from '../services/product-search';
 
 export const SalesScreen: React.FC = () => {
   const {
@@ -101,14 +26,64 @@ export const SalesScreen: React.FC = () => {
   } = useSalesStore();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredProducts = searchProducts(QUICK_PRODUCTS, searchQuery);
 
   const totalCents = items.reduce((acc, it) => acc + it.totalPriceCents, 0);
   const totalFormatted = Money.fromCents(totalCents).format();
 
+  const handleQueryChange = (val: string) => {
+    setSearchQuery(val);
+    setSelectedIndex(0);
+    if (errorMessage) {
+      dismissError();
+    }
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (filteredProducts.length > 0) {
+        setSelectedIndex((prev) => (prev + 1) % filteredProducts.length);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (filteredProducts.length > 0) {
+        setSelectedIndex((prev) => (prev - 1 + filteredProducts.length) % filteredProducts.length);
+      }
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filteredProducts.length === 0) {
+        setErrorMessage(`Producto no encontrado para "${searchQuery}"`);
+        return;
+      }
+
+      const selectedProduct = filteredProducts[selectedIndex] || filteredProducts[0];
+      if (selectedProduct) {
+        addItem(selectedProduct);
+        setSearchQuery('');
+        setSelectedIndex(0);
+        dismissError();
+      }
+    }
+  };
+
   // Global Keyboard Navigation Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // While cash tender modal is open, MoneyKeypad has exclusive keyboard ownership
+      if (isTenderOpen) {
+        return;
+      }
+
       // Hotkey F2: Focus scanner/search
       if (e.key === 'F2') {
         e.preventDefault();
@@ -119,27 +94,25 @@ export const SalesScreen: React.FC = () => {
       // Hotkey F4: Open Cash Tender
       if (e.key === 'F4') {
         e.preventDefault();
-        if (items.length > 0 && !isTenderOpen) {
+        if (items.length > 0 && !lastSaleSuccess) {
           openTender();
         }
         return;
       }
 
-      // Hotkey Escape: Cancel tender or dismiss success
-      if (e.key === 'Escape') {
-        if (isTenderOpen) {
-          e.preventDefault();
-          closeTender();
-        } else if (lastSaleSuccess) {
+      // Hotkey Escape or Enter when lastSaleSuccess is active
+      if (lastSaleSuccess) {
+        if (e.key === 'Enter' || e.key === 'Escape') {
           e.preventDefault();
           dismissSuccess();
+          searchInputRef.current?.focus();
+          return;
         }
-        return;
       }
 
-      // Numeric shortcuts 1-8 for quick product addition when input is not active
+      // Numeric shortcuts 1-8 for quick product addition only when input is not active and search is empty
       const isInputActive = document.activeElement?.tagName === 'INPUT';
-      if (!isInputActive && !isTenderOpen && !lastSaleSuccess) {
+      if (!isInputActive && !lastSaleSuccess && searchQuery.trim() === '') {
         const num = parseInt(e.key, 10);
         if (num >= 1 && num <= 8) {
           const quick = QUICK_PRODUCTS.find((p) => p.shortcutNumber === num);
@@ -157,8 +130,8 @@ export const SalesScreen: React.FC = () => {
     items.length,
     isTenderOpen,
     lastSaleSuccess,
+    searchQuery,
     openTender,
-    closeTender,
     dismissSuccess,
     addItem,
   ]);
@@ -166,19 +139,19 @@ export const SalesScreen: React.FC = () => {
   // Handle Search / Barcode Form Submit
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
+    if (filteredProducts.length === 0) {
+      if (searchQuery.trim()) {
+        setErrorMessage(`Producto no encontrado para "${searchQuery}"`);
+      }
+      return;
+    }
 
-    const found = QUICK_PRODUCTS.find(
-      (p) =>
-        p.barcode === searchQuery.trim() ||
-        p.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-    );
-
-    if (found) {
-      addItem(found);
+    const selectedProduct = filteredProducts[selectedIndex] || filteredProducts[0];
+    if (selectedProduct) {
+      addItem(selectedProduct);
       setSearchQuery('');
-    } else {
-      setErrorMessage(`Producto no encontrado para "${searchQuery}"`);
+      setSelectedIndex(0);
+      dismissError();
     }
   };
 
@@ -231,7 +204,8 @@ export const SalesScreen: React.FC = () => {
               ref={searchInputRef}
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              onKeyDown={handleInputKeyDown}
               placeholder="Escanear código o buscar producto (Atajo: F2)..."
               aria-label="Escanear o buscar producto"
               style={{
@@ -320,7 +294,7 @@ export const SalesScreen: React.FC = () => {
           </div>
         )}
 
-        {/* Quick Products Ribbon (Cinta de alta rotación) */}
+        {/* Quick Products Ribbon or Search Results */}
         <div>
           <div
             style={{
@@ -339,106 +313,151 @@ export const SalesScreen: React.FC = () => {
                 textTransform: 'uppercase',
               }}
             >
-              CINTA RÁPIDA DE MOSTRADOR
+              {searchQuery.trim()
+                ? 'RESULTADOS DE BÚSQUEDA'
+                : 'CINTA RÁPIDA DE MOSTRADOR (PRODUCTOS FAVORITOS)'}
             </span>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)' }}>
-              Atajos directos: números <kbd>1</kbd> al <kbd>8</kbd>
+              {searchQuery.trim()
+                ? `${filteredProducts.length} producto${filteredProducts.length === 1 ? '' : 's'} — flechas ↑↓ y Enter`
+                : 'Atajos rápidos: números 1 al 8'}
             </span>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
-              gap: '10px',
-            }}
-          >
-            {QUICK_PRODUCTS.map((prod) => (
-              <button
-                key={prod.productId}
-                type="button"
-                onClick={() => addItem(prod)}
-                style={{
-                  backgroundColor: 'var(--color-surface)',
-                  border: '2px solid var(--color-border)',
-                  padding: '10px 12px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-key)',
-                  transition:
-                    'transform var(--duration-fast) ease, border-color var(--duration-fast) ease',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  minHeight: '84px',
-                  position: 'relative',
-                }}
-              >
-                {/* Header: Category tag + shortcut badge */}
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span
+          {filteredProducts.length === 0 ? (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                padding: '24px 16px',
+                textAlign: 'center',
+                backgroundColor: 'var(--color-surface-sunken)',
+                border: '2px dashed var(--color-border)',
+                color: 'var(--color-ink-muted)',
+                fontFamily: 'var(--font-sans)',
+                fontWeight: 700,
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              Producto no encontrado para "{searchQuery}"
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+                gap: '10px',
+              }}
+            >
+              {filteredProducts.map((prod, idx) => {
+                const isSelected = idx === selectedIndex;
+                const isSearching = searchQuery.trim() !== '';
+
+                return (
+                  <button
+                    key={prod.productId}
+                    type="button"
+                    onClick={() => {
+                      addItem(prod);
+                      setSearchQuery('');
+                      setSelectedIndex(0);
+                      dismissError();
+                      searchInputRef.current?.focus();
+                    }}
                     style={{
-                      fontFamily: 'var(--font-sans)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 700,
-                      color: 'var(--color-ink-muted)',
-                      letterSpacing: '0.5px',
+                      backgroundColor:
+                        isSelected && isSearching
+                          ? 'var(--color-pulse-soft)'
+                          : 'var(--color-surface)',
+                      border:
+                        isSelected && isSearching
+                          ? '2px solid var(--color-pulse-solid)'
+                          : '2px solid var(--color-border)',
+                      padding: '10px 12px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      boxShadow:
+                        isSelected && isSearching
+                          ? '0 0 0 2px var(--color-pulse-focus)'
+                          : 'var(--shadow-key)',
+                      transition:
+                        'transform var(--duration-fast) ease, border-color var(--duration-fast) ease',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      minHeight: '84px',
+                      position: 'relative',
                     }}
                   >
-                    {prod.category}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 800,
-                      backgroundColor: 'var(--color-surface-sunken)',
-                      border: '1px solid var(--color-ink)',
-                      padding: '1px 5px',
-                      borderRadius: 'var(--radius-xs)',
-                      color: 'var(--color-ink)',
-                    }}
-                  >
-                    [{prod.shortcutNumber}]
-                  </span>
-                </div>
+                    {/* Header: Category tag + shortcut badge (only in quick ribbon) */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-sans)',
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 700,
+                          color: 'var(--color-ink-muted)',
+                          letterSpacing: '0.5px',
+                        }}
+                      >
+                        {prod.category}
+                      </span>
+                      {!isSearching && (
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 800,
+                            backgroundColor: 'var(--color-surface-sunken)',
+                            border: '1px solid var(--color-ink)',
+                            padding: '1px 5px',
+                            borderRadius: 'var(--radius-xs)',
+                            color: 'var(--color-ink)',
+                          }}
+                        >
+                          [{prod.shortcutNumber}]
+                        </span>
+                      )}
+                    </div>
 
-                {/* Product Name (Humanist Sans) */}
-                <div
-                  style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontWeight: 700,
-                    fontSize: 'var(--text-sm)',
-                    lineHeight: 1.25,
-                    color: 'var(--color-ink)',
-                  }}
-                >
-                  {prod.name}
-                </div>
+                    {/* Product Name (Humanist Sans) */}
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-sans)',
+                        fontWeight: 700,
+                        fontSize: 'var(--text-sm)',
+                        lineHeight: 1.25,
+                        color: 'var(--color-ink)',
+                      }}
+                    >
+                      {prod.name}
+                    </div>
 
-                {/* Price (IBM Plex Mono bold) */}
-                <div
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontWeight: 700,
-                    fontSize: 'var(--text-base)',
-                    color: 'var(--color-ink)',
-                    marginTop: '8px',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {Money.fromCents(prod.unitPriceCents).format()}
-                </div>
-              </button>
-            ))}
-          </div>
+                    {/* Price (IBM Plex Mono bold) */}
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        fontSize: 'var(--text-base)',
+                        color: 'var(--color-ink)',
+                        marginTop: '8px',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {Money.fromCents(prod.unitPriceCents).format()}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Keyboard Shortcuts Operational Guide */}
@@ -553,7 +572,10 @@ export const SalesScreen: React.FC = () => {
             onConfirmTender={async ({ receivedCents, changeCents }) => {
               await processCashPayment(receivedCents, changeCents);
             }}
-            onCancel={closeTender}
+            onCancel={() => {
+              closeTender();
+              searchInputRef.current?.focus();
+            }}
           />
         </div>
       )}
@@ -673,7 +695,10 @@ export const SalesScreen: React.FC = () => {
 
             <button
               type="button"
-              onClick={dismissSuccess}
+              onClick={() => {
+                dismissSuccess();
+                searchInputRef.current?.focus();
+              }}
               style={{
                 width: '100%',
                 height: '48px',

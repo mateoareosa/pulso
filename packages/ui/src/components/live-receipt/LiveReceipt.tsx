@@ -139,7 +139,10 @@ export const LiveReceipt: React.FC<LiveReceiptProps> = ({
                   alignItems: 'center',
                   padding: '8px 10px',
                   backgroundColor: isSelected ? 'var(--color-pulse-soft)' : 'transparent',
-                  border: isSelected
+                  borderTop: isSelected
+                    ? '1px solid var(--color-pulse-border)'
+                    : '1px solid transparent',
+                  borderRight: isSelected
                     ? '1px solid var(--color-pulse-border)'
                     : '1px solid transparent',
                   borderLeft: isSelected

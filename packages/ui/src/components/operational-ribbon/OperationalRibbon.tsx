@@ -16,8 +16,6 @@ export interface OperationalRibbonProps {
   operatorName?: string;
   expectedCashFormatted?: string;
   alertMessage?: string;
-  activeSection?: 'sales' | 'catalog';
-  onSectionChange?: (section: 'sales' | 'catalog') => void;
   onSyncClick?: () => void;
   onToggleConnection?: () => void;
   theme?: 'light' | 'night';
@@ -32,8 +30,6 @@ export const OperationalRibbon: React.FC<OperationalRibbonProps> = ({
   operatorName = 'Operador',
   expectedCashFormatted,
   alertMessage,
-  activeSection,
-  onSectionChange,
   onSyncClick,
   onToggleConnection,
   theme,
@@ -131,60 +127,6 @@ export const OperationalRibbon: React.FC<OperationalRibbonProps> = ({
                 {operatorName}
               </span>
             </div>
-
-            {/* Section Navigation Tabs when present */}
-            {onSectionChange && (
-              <nav
-                aria-label="Navegación principal"
-                className="pulso-ribbon-nav"
-                style={{ display: 'flex', gap: '4px', marginLeft: '6px' }}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSectionChange('sales')}
-                  aria-current={activeSection === 'sales' ? 'page' : undefined}
-                  style={{
-                    padding: '5px 12px',
-                    border: 'none',
-                    borderRadius: 'var(--radius-xs)',
-                    backgroundColor:
-                      activeSection === 'sales' ? 'var(--color-surface)' : 'transparent',
-                    color:
-                      activeSection === 'sales' ? 'var(--color-ink)' : 'var(--color-ribbon-text)',
-                    fontWeight: activeSection === 'sales' ? 800 : 600,
-                    fontSize: 'var(--text-xs)',
-                    letterSpacing: '0.5px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'background-color var(--duration-fast) ease',
-                  }}
-                >
-                  MOSTRADOR (VENTA)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSectionChange('catalog')}
-                  aria-current={activeSection === 'catalog' ? 'page' : undefined}
-                  style={{
-                    padding: '5px 12px',
-                    border: 'none',
-                    borderRadius: 'var(--radius-xs)',
-                    backgroundColor:
-                      activeSection === 'catalog' ? 'var(--color-surface)' : 'transparent',
-                    color:
-                      activeSection === 'catalog' ? 'var(--color-ink)' : 'var(--color-ribbon-text)',
-                    fontWeight: activeSection === 'catalog' ? 800 : 600,
-                    fontSize: 'var(--text-xs)',
-                    letterSpacing: '0.5px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'background-color var(--duration-fast) ease',
-                  }}
-                >
-                  CATÁLOGO COMPONENTES
-                </button>
-              </nav>
-            )}
           </div>
 
           {/* Right: Actions, Cash, Sync, Connectivity, Theme */}
