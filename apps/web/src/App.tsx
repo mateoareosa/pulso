@@ -3,15 +3,60 @@ import { SalesScreen } from './features/sales/components/SalesScreen';
 import { OperationalRibbon } from '@pulso/ui';
 import { useSalesStore } from './features/sales/store/sales.store';
 import { PwaInstallPrompt } from './features/pwa/PwaInstallPrompt';
+import { AuthProvider, useAuth } from './features/auth/AuthContext';
+import { LoginScreen } from './features/auth/LoginScreen';
+import { RegisterScreen } from './features/auth/RegisterScreen';
+import { BootstrapScreen } from './features/auth/BootstrapScreen';
+import { NetworkErrorScreen } from './features/auth/NetworkErrorScreen';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [theme, setTheme] = useState<'light' | 'night'>('light');
+  const [unauthView, setUnauthView] = useState<'login' | 'register'>('login');
   const { connectionStatus, pendingSyncCount, toggleConnection, syncPendingSales } =
     useSalesStore();
+  const { status, session, logout, retryBootstrap } = useAuth();
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'night' : 'light'));
   };
+
+  // 1. Initial verification check
+  if (status === 'INITIAL_CHECK') {
+    return (
+      <div data-theme={theme}>
+        <BootstrapScreen />
+      </div>
+    );
+  }
+
+  // 2. Server connection failure (distinguished from 401)
+  if (status === 'NETWORK_ERROR') {
+    return (
+      <div data-theme={theme}>
+        <NetworkErrorScreen onRetry={retryBootstrap} />
+      </div>
+    );
+  }
+
+  // 3. Unauthenticated views: Login and Initial Business Registration
+  if (status === 'UNAUTHENTICATED' || !session) {
+    return (
+      <div data-theme={theme}>
+        {unauthView === 'login' ? (
+          <LoginScreen onGoToRegister={() => setUnauthView('register')} />
+        ) : (
+          <RegisterScreen onGoToLogin={() => setUnauthView('login')} />
+        )}
+      </div>
+    );
+  }
+
+  // 4. Authenticated Operational View
+  const roleTranslated =
+    session.role === 'OWNER' ? 'Propietario' : session.role === 'MANAGER' ? 'Encargado' : 'Cajero';
+
+  const operationalContext = `${session.tenant.name} · ${session.location.name} · Sin turno abierto`;
+  const operatorLabel = `${session.user.name} (${roleTranslated})`;
 
   return (
     <div
@@ -24,18 +69,42 @@ export const App: React.FC = () => {
         color: 'var(--color-ink)',
       }}
     >
-      {/* Refined Unified Operational Header */}
+      {/* Real Verified Operational Ribbon */}
       <OperationalRibbon
         connectionStatus={connectionStatus}
         pendingSyncCount={pendingSyncCount}
-        shiftLabel="Turno Tarde #14"
-        operatorName="Mateo (Cajero)"
+        shiftLabel={operationalContext}
+        operatorName={operatorLabel}
         onToggleConnection={toggleConnection}
         onSyncClick={syncPendingSales}
         theme={theme}
         onToggleTheme={toggleTheme}
       >
         <PwaInstallPrompt />
+
+        {/* Accessible Logout Button */}
+        <button
+          type="button"
+          onClick={logout}
+          aria-label="Cerrar sesión"
+          title="Cerrar sesión operativa"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            backgroundColor: 'transparent',
+            border: '1px solid var(--color-ribbon-muted, rgba(255,255,255,0.25))',
+            borderRadius: 'var(--radius-xs)',
+            color: 'var(--color-ribbon-text)',
+            padding: '4px 10px',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 800,
+            cursor: 'pointer',
+            minHeight: '30px',
+          }}
+        >
+          SALIR
+        </button>
       </OperationalRibbon>
 
       {/* Main View Area */}
@@ -43,5 +112,13 @@ export const App: React.FC = () => {
         <SalesScreen />
       </div>
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };

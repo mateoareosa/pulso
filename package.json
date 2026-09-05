@@ -6,12 +6,15 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:integration": "pnpm --filter @pulso/api test:integration",
     "test:e2e": "pnpm --filter @pulso/web test:e2e",
     "lint": "eslint . --max-warnings 0",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md,css}\" --ignore-path .gitignore",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\" --ignore-path .gitignore",
     "typecheck": "turbo run typecheck",
-    "dev": "turbo run dev"
+    "dev": "turbo run dev",
+    "prisma": "pnpm --filter @pulso/api exec prisma",
+    "db:test:prepare": "node scripts/prepare-test-db.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

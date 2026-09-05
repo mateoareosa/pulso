@@ -152,8 +152,6 @@ export const useSalesStore = create<SalesState>((set, get) => ({
     const idempotencyKey = IdempotencyKey.generate().value;
 
     const saleCommand: CreateSaleCommand = {
-      tenantId: 'tenant-pulso-01',
-      locationId: 'loc-central',
       shiftId: 'shift-turn-14',
       idempotencyKey,
       items: state.items.map((it) => ({

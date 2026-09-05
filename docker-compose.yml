@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,6 +15,25 @@ services:
       test: ['CMD-SHELL', 'pg_isready -U pulso -d pulso_dev']
       interval: 5s
       timeout: 5s
+      retries: 5
+
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: pulso-postgres-test
+    profiles:
+      - test
+    environment:
+      POSTGRES_USER: pulso
+      POSTGRES_PASSWORD: pulso_test_password
+      POSTGRES_DB: pulso_test
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pulso -d pulso_test']
+      interval: 3s
+      timeout: 3s
       retries: 5
 
 volumes:

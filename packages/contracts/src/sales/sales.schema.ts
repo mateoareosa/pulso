@@ -22,26 +22,43 @@ export const TenderRecordSchema = z.object({
 });
 export type TenderRecord = z.infer<typeof TenderRecordSchema>;
 
-export const CreateSaleCommandSchema = z.object({
-  tenantId: z.string().min(1),
-  locationId: z.string().min(1),
-  shiftId: z.string().min(1),
-  idempotencyKey: z.string().uuid(),
-  items: z.array(SaleLineSchema).min(1),
-  tenders: z.array(TenderRecordSchema).min(1),
-  totalCents: z.number().int().nonnegative(),
-  createdAtUtc: z.string().datetime({ offset: true }).or(z.string().datetime()),
-});
+export const CreateSaleCommandSchema = z
+  .object({
+    shiftId: z.string().min(1),
+    idempotencyKey: z.string().uuid(),
+    items: z.array(SaleLineSchema).min(1),
+    tenders: z.array(TenderRecordSchema).min(1),
+    totalCents: z.number().int().nonnegative(),
+    createdAtUtc: z.string().datetime({ offset: true }).or(z.string().datetime()),
+  })
+  .strict();
 export type CreateSaleCommand = z.infer<typeof CreateSaleCommandSchema>;
 
-export const SyncOperationSchema = z.object({
-  operationId: z.string().uuid(),
-  deviceId: z.string().min(1),
-  tenantId: z.string().min(1),
-  locationId: z.string().min(1),
-  type: z.enum(['CREATE_SALE', 'CASH_MOVEMENT']),
-  payload: CreateSaleCommandSchema,
-  localTimestamp: z.string().datetime(),
-  schemaVersion: z.number().int().default(1),
-});
+export const SyncOperationSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    deviceId: z.string().min(1),
+    type: z.enum(['CREATE_SALE', 'CASH_MOVEMENT']),
+    payload: CreateSaleCommandSchema,
+    localTimestamp: z.string().datetime(),
+    schemaVersion: z.number().int().default(1),
+  })
+  .strict();
 export type SyncOperation = z.infer<typeof SyncOperationSchema>;
+
+export const SyncBatchOperationSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    type: z.literal('CREATE_SALE'),
+    payload: CreateSaleCommandSchema,
+  })
+  .strict();
+export type SyncBatchOperation = z.infer<typeof SyncBatchOperationSchema>;
+
+export const SyncBatchSchema = z
+  .object({
+    deviceId: z.string().min(1),
+    operations: z.array(SyncBatchOperationSchema),
+  })
+  .strict();
+export type SyncBatch = z.infer<typeof SyncBatchSchema>;

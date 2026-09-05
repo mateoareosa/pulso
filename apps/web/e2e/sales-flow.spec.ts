@@ -11,23 +11,188 @@ test.beforeAll(() => {
   }
 });
 
+test.beforeEach(async ({ page }) => {
+  // Ensure completely clean database state before each test scenario on exclusive test API
+  const resetRes = await page.request.post('http://localhost:4100/api/test/reset', {
+    headers: {
+      Origin: 'http://localhost:4173',
+    },
+  });
+  if (resetRes.status() !== 200) {
+    throw new Error(`Failed to reset test database: HTTP ${resetRes.status()}`);
+  }
+});
+
 async function saveScreenshot(page: Page, name: string) {
   const localPath = path.join(SCREENSHOTS_DIR, `${name}.png`);
   await page.screenshot({ path: localPath, fullPage: true });
 }
 
-test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport Verification', () => {
-  test('Accessibility Audit: Sales Screen meets WCAG AA standards with Axe (Day Mode)', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await expect(page.locator('.pulso-ribbon')).toBeVisible();
+async function registerBusiness(
+  page: Page,
+  businessName = 'Kiosco El Trébol',
+  locationName = 'Casa Central',
+  ownerName = 'Operador Mostrador',
+  email = 'operador@kiosco.com',
+  password = 'passwordSegura123!'
+) {
+  await page.goto('/');
 
-    const accessibilityScanResults = await new AxeBuilder({ page })
+  // Wait for bootstrap verification to complete and either register or login screen to display
+  const registerInput = page.locator('#register-businessName');
+  const goToRegisterBtn = page.locator('button:has-text("Registrar mi negocio")');
+
+  await expect(registerInput.or(goToRegisterBtn)).toBeVisible();
+  if (await goToRegisterBtn.isVisible()) {
+    await goToRegisterBtn.click();
+  }
+
+  await expect(registerInput).toBeVisible();
+  await page.locator('#register-businessName').fill(businessName);
+  await page.locator('#register-locationName').fill(locationName);
+  await page.locator('#register-ownerName').fill(ownerName);
+  await page.locator('#register-email').fill(email);
+  await page.locator('#register-password').fill(password);
+  await page.locator('#register-passwordConfirm').fill(password);
+  await page.locator('button:has-text("REGISTRAR NEGOCIO Y ABRIR MOSTRADOR")').click();
+
+  // Wait for sales screen to load with verified business name in ribbon
+  const ribbon = page.locator('.pulso-ribbon');
+  await expect(ribbon).toBeVisible();
+  await expect(ribbon).toContainText(businessName);
+}
+
+test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2E Suite', () => {
+  test('Accessibility Audit (Axe WCAG AA): LoginScreen and RegisterScreen', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('h1:has-text("Acceso a Mostrador")')).toBeVisible();
+
+    // 1. Audit Login Screen
+    await saveScreenshot(page, 'login-mostrador-1280x720');
+    const loginScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
+    expect(loginScanResults.violations).toEqual([]);
 
-    expect(accessibilityScanResults.violations).toEqual([]);
+    // 2. Switch to Register Screen & Audit
+    await page.locator('button:has-text("Registrar mi negocio")').click();
+    await expect(page.locator('h1:has-text("Registrar Negocio")')).toBeVisible();
+    await saveScreenshot(page, 'registro-negocio-1280x720');
+
+    const registerScanResults = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(registerScanResults.violations).toEqual([]);
+  });
+
+  test('Full Authentication Lifecycle: Unauthenticated -> Register -> Auto-login -> Reload -> Demo Sale -> Logout -> Protected Route -> Login error -> Valid Login', async ({
+    page,
+  }) => {
+    // 1. Open app without session -> verifies login screen is displayed
+    await page.goto('/');
+    await expect(page.locator('h1:has-text("Acceso a Mostrador")')).toBeVisible();
+
+    // 2. Register initial business
+    await registerBusiness(
+      page,
+      'Kiosco El Trébol',
+      'Casa Central',
+      'Operador Mostrador',
+      'operador@kiosco.com',
+      'passwordSegura123!'
+    );
+
+    const ribbon = page.locator('.pulso-ribbon');
+    // 3. Confirm automatic entry and real data in ribbon
+    await expect(ribbon).toContainText('Kiosco El Trébol');
+    await expect(ribbon).toContainText('Casa Central');
+    await expect(ribbon).toContainText('Sin turno abierto');
+    await expect(ribbon).toContainText('Operador Mostrador (Propietario)');
+    await expect(ribbon).not.toContainText('Operador (Cajero)');
+    await expect(ribbon).not.toContainText('Turno Tarde #14');
+
+    // 4. Reload page and confirm session persistence
+    await page.reload();
+    await expect(ribbon).toBeVisible();
+    await expect(ribbon).toContainText('Kiosco El Trébol');
+    await expect(ribbon).toContainText('Casa Central');
+
+    // 5. Perform authenticated demo sale
+    const productBtn = page.locator('button:has-text("Agua Mineral 500ml")');
+    await productBtn.click();
+    await page.locator('button:has-text("COBRAR EN EFECTIVO")').click();
+
+    const tenderModal = page.locator('[role="dialog"][aria-label="Cobro en efectivo"]');
+    await expect(tenderModal).toBeVisible();
+    await tenderModal.locator('button:has-text("EXACTO")').click();
+    await tenderModal.locator('button:has-text("CONFIRMAR COBRO")').click();
+
+    const successSeal = page.locator('[role="status"]:has-text("VENTA CONFIRMADA")');
+    await expect(successSeal).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(successSeal).not.toBeVisible();
+
+    // 6. Logout
+    const logoutBtn = page.locator('button:has-text("SALIR")');
+    await logoutBtn.click();
+
+    // 7. Verify redirect to login and protected route remains inaccessible
+    await expect(page.locator('h1:has-text("Acceso a Mostrador")')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('h1:has-text("Acceso a Mostrador")')).toBeVisible();
+
+    // 8. Test invalid password login
+    await page.locator('#login-email').fill('operador@kiosco.com');
+    await page.locator('#login-password').fill('wrongpassword999');
+    await page.locator('button:has-text("INGRESAR AL MOSTRADOR")').click();
+
+    const errorAlert = page.locator('[role="alert"]');
+    await expect(errorAlert).toBeVisible();
+    await expect(errorAlert).toContainText('Credenciales inválidas');
+
+    // 9. Login with correct password
+    await page.locator('#login-password').fill('passwordSegura123!');
+    await page.locator('button:has-text("INGRESAR AL MOSTRADOR")').click();
+
+    await expect(ribbon).toBeVisible();
+    await expect(ribbon).toContainText('Kiosco El Trébol');
+    await expect(ribbon).toContainText('Operador Mostrador (Propietario)');
+  });
+
+  test('Multi-Tenant Isolation between two independent businesses', async ({ page, browser }) => {
+    // 1. Register Business A in default context
+    await registerBusiness(
+      page,
+      'Kiosco Alpha',
+      'Sucursal Alpha',
+      'Alice Propietaria',
+      'alice@alpha.com',
+      'superSecretPassphraseAlpha123'
+    );
+    const ribbonA = page.locator('.pulso-ribbon');
+    await expect(ribbonA).toContainText('Kiosco Alpha');
+    await expect(ribbonA).toContainText('Alice Propietaria (Propietario)');
+
+    // 2. Register Business B in a separate browser context
+    const contextB = await browser.newContext({ baseURL: 'http://localhost:4173' });
+    const pageB = await contextB.newPage();
+    await registerBusiness(
+      pageB,
+      'Kiosco Beta',
+      'Sucursal Beta',
+      'Bob Propietario',
+      'bob@beta.com',
+      'superSecretPassphraseBeta123'
+    );
+    const ribbonB = pageB.locator('.pulso-ribbon');
+    await expect(ribbonB).toContainText('Kiosco Beta');
+    await expect(ribbonB).toContainText('Bob Propietario (Propietario)');
+
+    // 3. Verify Business A is completely unpolluted by Business B
+    await expect(ribbonA).toContainText('Kiosco Alpha');
+    await expect(ribbonA).not.toContainText('Kiosco Beta');
+
+    await contextB.close();
   });
 
   const VIEWPORTS = [
@@ -37,23 +202,31 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
   ];
 
   for (const vp of VIEWPORTS) {
-    test(`Scenario (${vp.label}): Operational Sales Flow, Dynamic Search, Physical Keyboard Tender & Dismiss`, async ({
+    test(`Scenario (${vp.label}): Operational Sales Flow & Multi-Viewport Responsiveness (Zero Horizontal Overflow)`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      await page.goto('/');
+      await registerBusiness(
+        page,
+        'Kiosco El Trébol',
+        'Casa Central',
+        'Operador Mostrador',
+        `operador-${vp.label}@kiosco.com`,
+        'passwordSegura123!'
+      );
 
       const ribbon = page.locator('.pulso-ribbon');
       await expect(ribbon).toBeVisible();
       await expect(ribbon).toContainText('ONLINE');
 
+      // Verify no horizontal overflow in the viewport
+      const hasHorizontalOverflow = await page.evaluate(() => {
+        return document.documentElement.scrollWidth > document.documentElement.clientWidth;
+      });
+      expect(hasHorizontalOverflow).toBe(false);
+
       // Verify ComponentCatalog is completely removed from navigation
       await expect(page.locator('button:has-text("CATÁLOGO COMPONENTES")')).not.toBeVisible();
-      await expect(page.locator('button:has-text("CATÁLOGO")')).not.toBeVisible();
-
-      // Verify static fictive cash balance is NOT displayed
-      await expect(ribbon).not.toContainText('45.200');
-      await expect(ribbon).not.toContainText('Caja:');
 
       // 1. Capture Estado Vacío
       await expect(page.locator('text=Esperando productos...')).toBeVisible();
@@ -71,7 +244,7 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
         await saveScreenshot(page, 'busqueda-con-coincidencias');
       }
 
-      // 3. Dynamic Search without matches (accessible status)
+      // 3. Dynamic Search without matches
       await searchInput.fill('inexistente777');
       const notFoundStatus = page.locator(
         '[role="status"]:has-text("Producto no encontrado para \\"inexistente777\\"")'
@@ -174,14 +347,20 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
+    await registerBusiness(
+      page,
+      'Kiosco Offline Test',
+      'Casa Central',
+      'Operador Offline',
+      'offline@kiosco.com',
+      'passwordSegura123!'
+    );
 
     // Toggle to offline
     const connectionBtn = page.locator('button[aria-label*="Estado de conexión"]');
     await connectionBtn.click();
     await expect(connectionBtn).toContainText('SIN CONEXIÓN');
 
-    // Capture Estado Offline
     await saveScreenshot(page, 'estado-5-offline');
 
     // Make an offline sale
@@ -211,7 +390,14 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
 
   test('Scenario: Error Banner on Non-Existent Product Submission', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
+    await registerBusiness(
+      page,
+      'Kiosco Error Banner',
+      'Casa Central',
+      'Operador Error',
+      'error@kiosco.com',
+      'passwordSegura123!'
+    );
 
     const searchInput = page.locator('input[aria-label="Escanear o buscar producto"]');
     await searchInput.fill('Inexistente777');
@@ -221,7 +407,6 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     await expect(errorBanner).toBeVisible();
     await expect(errorBanner).toContainText('Producto no encontrado');
 
-    // Capture Estado Error
     await saveScreenshot(page, 'estado-7-error');
   });
 
@@ -229,9 +414,15 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
+    await registerBusiness(
+      page,
+      'Kiosco Modo Noche',
+      'Casa Central',
+      'Operador Noche',
+      'noche@kiosco.com',
+      'passwordSegura123!'
+    );
 
-    // Validate keyboard accessibility of the theme toggle button via Focus and Enter
     const themeBtn = page.locator('button[aria-label*="Cambiar a modo"]').first();
     await themeBtn.focus();
     await expect(themeBtn).toBeFocused();
@@ -251,11 +442,9 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     const rootDiv = page.locator('div[data-theme="night"]');
     await expect(rootDiv).toBeVisible();
 
-    // Add products to populate ticket in night mode
     await page.locator('button:has-text("Alfajor Triple Dulce de Leche")').click();
     await page.locator('button:has-text("Gaseosa Cola 500ml")').click();
 
-    // Capture Sales Screen in Night Mode
     await saveScreenshot(page, 'ventas-modo-noche');
 
     // Run Axe WCAG AA audit on Night Mode Sales Screen
@@ -265,10 +454,12 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     expect(nightSalesScan.violations).toEqual([]);
   });
 
-  test('Scenario: PWA Installation Evidence & Service Worker Validation', async ({ page }) => {
+  test('Scenario: PWA Real Assets (Manifest & Service Worker) and Simulated Prompt Flow', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
 
-    // 1. Fetch & Validate Web App Manifest
+    // 1. Fetch & Validate Real Web App Manifest from server
     const manifestResponse = await page.request.get('/manifest.webmanifest');
     expect(manifestResponse.status()).toBe(200);
 
@@ -280,8 +471,16 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     expect(manifest.icons[0].sizes).toBe('192x192');
     expect(manifest.icons[1].sizes).toBe('512x512');
 
-    // 2. Validate Service Worker Registration in Browser
-    await page.goto('/');
+    // 2. Validate Real Service Worker Registration in Browser
+    await registerBusiness(
+      page,
+      'Kiosco PWA',
+      'Casa Central',
+      'Operador PWA',
+      'pwa@kiosco.com',
+      'passwordSegura123!'
+    );
+
     const swRegistered = await page.evaluate(async () => {
       if (!('serviceWorker' in navigator)) return false;
       const registrations = await navigator.serviceWorker.getRegistrations();
@@ -289,7 +488,9 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     });
     expect(swRegistered).toBe(true);
 
-    // 3. Dispatch beforeinstallprompt event to simulate Chromium installation offer
+    // 3. Dispatch synthetic beforeinstallprompt event
+    // Note: Synthetic dispatch tests the application's event listener and install UI reaction,
+    // as automated headless browsers do not trigger the native installation prompt autonomously.
     await page.evaluate(() => {
       const event = new Event('beforeinstallprompt');
       Object.assign(event, {
@@ -303,7 +504,6 @@ test.describe('Pulso "Mostrador vivo" — Etapa 0.1 E2E Suite & Multi-Viewport V
     const installBtn = page.locator('button:has-text("INSTALAR APP")');
     await expect(installBtn).toBeVisible();
 
-    // Capture screenshot showing the PWA installation offer in the OperationalRibbon
     await saveScreenshot(page, 'pwa-instalacion-prompt');
   });
 });

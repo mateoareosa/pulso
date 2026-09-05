@@ -44,3 +44,24 @@ Pulso implementa una **estrategia offline-first consciente**:
 - Al reconectar y retransmitir la cola hacia la API (`POST /sync/batch` o `POST /sales`):
   1. Si la venta no existía en el servidor, se inserta atómicamente.
   2. Si la petición ya había llegado antes del corte (falla de respuesta de red), el backend detecta la clave en `IdempotencyRecord` y devuelve el resultado original con bandera `idempotentReplay: true`, sin volver a descontar stock ni duplicar la caja.
+
+---
+
+## 4. Autenticación, Sesión y Trabajo sin Red
+
+La seguridad y aislamiento multi-tenant dependen de sesiones opacas verificadas en PostgreSQL:
+
+1. **Operaciones que Requieren Conexión Activa**:
+   - **Registro inicial de negocio (`POST /api/auth/register`)**: requiere crear usuario, comercio, sucursal, membresía y emitir la cookie de sesión en PostgreSQL.
+   - **Inicio de sesión (`POST /api/auth/login`)**: requiere validar credenciales (Argon2id) y persistir el hash de sesión en PostgreSQL.
+   - **Verificación inicial (`GET /api/auth/me`)**: al abrir la aplicación o refrescar la página, el navegador consulta al servidor para validar la cookie de sesión `pulso_session`.
+   - **Cierre de sesión (`POST /api/auth/logout`)**: revoca la sesión en la base de datos y borra la cookie en el cliente.
+
+2. **Operación Offline con Sesión en Memoria**:
+   - Si la terminal ya inició sesión y la aplicación web se encuentra cargada en memoria, los cortes de conectividad **NO** bloquean la operatoria de venta ni expulsan al cajero.
+   - El contexto de sesión (`user`, `tenant`, `location`, `role`) permanece activo en memoria (`AuthContext`), permitiendo registrar ventas en cola local (`IndexedDB`) con la cinta indicando `SIN CONEXIÓN`.
+   - Al restablecerse la conexión, la cola local sincroniza automáticamente utilizando la cookie de sesión vigente.
+
+3. **Reinicio de Terminal o Recarga sin Red**:
+   - Si la terminal se reinicia o se recarga completamente el navegador durante una caída total de red, el chequeo inicial (`/api/auth/me`) falla por error de red.
+   - En este escenario, la aplicación entra en estado `NETWORK_ERROR` y presenta la pantalla `NetworkErrorScreen` con botón explícito de reintento. No se permite el acceso anónimo no verificado a la terminal para preservar la seguridad de datos del mostrador.

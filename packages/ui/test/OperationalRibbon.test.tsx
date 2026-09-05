@@ -10,7 +10,7 @@ describe('OperationalRibbon Component', () => {
         connectionStatus="online"
         pendingSyncCount={0}
         shiftLabel="Turno Tarde #14"
-        operatorName="Mateo"
+        operatorName="Operador"
         expectedCashFormatted="$ 45.200,00"
       />
     );

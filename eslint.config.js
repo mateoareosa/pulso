@@ -38,6 +38,16 @@ export default tseslint.config(
     },
   },
   {
+    files: ['scripts/**/*.js', '*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
