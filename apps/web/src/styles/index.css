@@ -1,0 +1,37 @@
+@import '@pulso/ui/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-bold);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+}

@@ -1,0 +1,175 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// Core Tenancy & Organization
+// -------------------------------------------------------------
+model Tenant {
+  id          String     @id @default(uuid())
+  name        String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  locations   Location[]
+  users       User[]
+  products    Product[]
+  sales       Sale[]
+  cashShifts  CashShift[]
+  idempotencyRecords IdempotencyRecord[]
+
+  @@map("tenants")
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashShifts CashShift[]
+  sales      Sale[]
+
+  @@index([tenantId])
+  @@map("locations")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String
+  name      String
+  role      String   @default("CASHIER") // OWNER, MANAGER, CASHIER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// -------------------------------------------------------------
+// Catalog & Pricing
+// -------------------------------------------------------------
+model Product {
+  id             String   @id @default(uuid())
+  tenantId       String
+  name           String
+  barcode        String?
+  unitPriceCents Int      // Stored strictly in integer cents
+  costPriceCents Int?     // Stored strictly in integer cents
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, barcode])
+  @@index([tenantId])
+  @@map("products")
+}
+
+// -------------------------------------------------------------
+// Cash & Shifts
+// -------------------------------------------------------------
+model CashShift {
+  id                String    @id @default(uuid())
+  tenantId          String
+  locationId        String
+  openedById        String
+  closedById        String?
+  initialCashCents  Int
+  expectedCashCents Int       @default(0)
+  countedCashCents  Int?
+  status            String    @default("OPEN") // OPEN, CLOSED
+  openedAt          DateTime  @default(now())
+  closedAt          DateTime?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  sales    Sale[]
+
+  @@index([tenantId, locationId])
+  @@map("cash_shifts")
+}
+
+// -------------------------------------------------------------
+// Sales & Tenders (Immutable transactional ledger)
+// -------------------------------------------------------------
+model Sale {
+  id             String         @id @default(uuid())
+  tenantId       String
+  locationId     String
+  shiftId        String
+  idempotencyKey String
+  totalCents     Int            // Strictly integer cents
+  createdAt      DateTime       @default(now())
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location       Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  shift          CashShift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  lines          SaleLine[]
+  tenders        TenderRecord[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, locationId])
+  @@index([shiftId])
+  @@map("sales")
+}
+
+model SaleLine {
+  id              String   @id @default(uuid())
+  saleId          String
+  productId       String
+  name            String
+  quantity        Decimal  @db.Decimal(12, 3)
+  unitPriceCents  Int
+  totalPriceCents Int
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_lines")
+}
+
+model TenderRecord {
+  id                  String  @id @default(uuid())
+  saleId              String
+  type                String  // CASH, DEBIT, CREDIT, TRANSFER, OTHER
+  amountCents         Int
+  receivedAmountCents Int?
+  changeAmountCents   Int?
+  reference           String?
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("tender_records")
+}
+
+// -------------------------------------------------------------
+// Idempotency Tracking
+// -------------------------------------------------------------
+model IdempotencyRecord {
+  id             String   @id @default(uuid())
+  tenantId       String
+  idempotencyKey String
+  resourceType   String   // SALE, CASH_MOVEMENT
+  responseStatus Int
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId])
+  @@map("idempotency_records")
+}

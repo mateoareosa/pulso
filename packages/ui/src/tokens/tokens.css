@@ -1,0 +1,74 @@
+/* Pulso Design Tokens: "Mostrador vivo" */
+:root {
+  /* Color Palette (OKLCH) */
+  --color-ticket: oklch(0.97 0.015 85);
+  --color-ticket-edge: oklch(0.91 0.025 85);
+  --color-ink: oklch(0.2 0.03 160);
+  --color-ink-muted: oklch(0.48 0.02 160);
+  --color-ink-subtle: oklch(0.68 0.015 160);
+
+  --color-pulse: oklch(0.78 0.22 135);
+  --color-pulse-hover: oklch(0.72 0.24 135);
+  --color-pulse-subtle: oklch(0.94 0.07 135);
+
+  --color-amber: oklch(0.75 0.18 65);
+  --color-amber-subtle: oklch(0.94 0.06 65);
+
+  --color-tomato: oklch(0.6 0.22 25);
+  --color-tomato-hover: oklch(0.54 0.24 25);
+  --color-tomato-subtle: oklch(0.93 0.06 25);
+
+  --color-surface: oklch(0.99 0.005 85);
+  --color-surface-sunken: oklch(0.92 0.018 85);
+  --color-border: oklch(0.84 0.02 85);
+  --color-border-bold: oklch(0.2 0.03 160);
+
+  /* Typography */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Radii - Sharp industrial angles with subtle tactile softness */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-ticket: 0px;
+
+  /* Shadows - Crisp hard-edged stamps rather than blurry floating blur */
+  --shadow-key: 0 2px 0 var(--color-ink);
+  --shadow-key-active: 0 0 0 transparent;
+  --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.08);
+
+  /* Motion */
+  --duration-pulse: 150ms;
+  --duration-receipt-insert: 180ms;
+  --ease-tactile: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Night / Petroleum Shift Theme */
+[data-theme='night'] {
+  --color-ticket: oklch(0.22 0.025 240);
+  --color-ticket-edge: oklch(0.18 0.025 240);
+  --color-ink: oklch(0.96 0.01 85);
+  --color-ink-muted: oklch(0.72 0.015 160);
+  --color-ink-subtle: oklch(0.5 0.02 160);
+
+  --color-pulse: oklch(0.82 0.22 135);
+  --color-pulse-hover: oklch(0.88 0.22 135);
+  --color-pulse-subtle: oklch(0.28 0.08 135);
+
+  --color-amber: oklch(0.8 0.18 65);
+  --color-amber-subtle: oklch(0.3 0.06 65);
+
+  --color-tomato: oklch(0.68 0.22 25);
+  --color-tomato-subtle: oklch(0.28 0.07 25);
+
+  --color-surface: oklch(0.16 0.025 240);
+  --color-surface-sunken: oklch(0.12 0.025 240);
+  --color-border: oklch(0.28 0.025 240);
+  --color-border-bold: oklch(0.85 0.02 85);
+
+  --shadow-key: 0 2px 0 var(--color-ink);
+  --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.5);
+}
