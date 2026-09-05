@@ -1,13 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSalesStore } from '../store/sales.store';
+import { useCatalogStore, CatalogProductItem } from '../../catalog/store/catalog.store';
+import { useOptionalAuth } from '../../auth/AuthContext';
+import { normalizeSearchText } from '../../sync/offline-db';
 import { LiveReceipt, MoneyKeypad } from '@pulso/ui';
 import { Money } from '@pulso/domain';
 import { IconSearch, IconBarcode, IconCheck, IconAlert } from '@pulso/icons';
-import { QUICK_PRODUCTS, searchProducts } from '../services/product-search';
 
 export const SalesScreen: React.FC = () => {
+  const auth = useOptionalAuth();
+  const session = auth?.session ?? null;
   const {
     items,
+    connectionStatus,
     isTenderOpen,
     lastSaleSuccess,
     errorMessage,
@@ -25,24 +30,101 @@ export const SalesScreen: React.FC = () => {
     setErrorMessage,
   } = useSalesStore();
 
+  const {
+    products,
+    quickProducts,
+    isLoading: isCatalogLoading,
+    error: catalogError,
+    loadPosCatalog,
+    searchPosProducts,
+  } = useCatalogStore();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [remoteMatches, setRemoteMatches] = useState<CatalogProductItem[] | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const activeQueryIdRef = useRef(0);
 
-  const filteredProducts = searchProducts(QUICK_PRODUCTS, searchQuery);
+  useEffect(() => {
+    if (session?.tenant?.id && session?.location?.id) {
+      loadPosCatalog(session.tenant.id, session.location.id, connectionStatus === 'offline');
+    }
+  }, [session?.tenant?.id, session?.location?.id, connectionStatus, loadPosCatalog]);
+
+  const trimmed = searchQuery.trim();
+  const normalizedQ = normalizeSearchText(trimmed);
+
+  // Strictly filter for vendible products (active and available in this branch)
+  const vendibleProducts = products.filter((p) => p.isActive && p.isAvailable);
+  const vendibleQuick = quickProducts.filter((p) => p.isActive && p.isAvailable);
+
+  // Debounced dynamic search against API / IndexedDB for full catalog (> 100 products)
+  useEffect(() => {
+    if (!trimmed) {
+      setRemoteMatches(null);
+      return;
+    }
+
+    const queryId = activeQueryIdRef.current;
+    let isMounted = true;
+    const timer = setTimeout(async () => {
+      if (!session?.tenant?.id || !session?.location?.id) return;
+      try {
+        const results = await searchPosProducts(
+          session.tenant.id,
+          session.location.id,
+          trimmed,
+          connectionStatus === 'offline'
+        );
+        if (isMounted && activeQueryIdRef.current === queryId) {
+          setRemoteMatches(results.filter((p) => p.isActive && p.isAvailable));
+        }
+      } catch {
+        // Ignored
+      }
+    }, 150);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [trimmed, session?.tenant?.id, session?.location?.id, connectionStatus, searchPosProducts]);
+
+  const exactBarcodeMatches = vendibleProducts.filter((p) => p.barcode === trimmed);
+  const otherMatches = vendibleProducts.filter((p) => {
+    if (p.barcode === trimmed) return false;
+    return (
+      normalizeSearchText(p.name).includes(normalizedQ) ||
+      (p.barcode && p.barcode.includes(trimmed)) ||
+      (p.sku && p.sku.toLowerCase().includes(trimmed.toLowerCase()))
+    );
+  });
+
+  const localMatches = [...exactBarcodeMatches, ...otherMatches];
+
+  const filteredProducts: CatalogProductItem[] =
+    trimmed !== ''
+      ? remoteMatches !== null
+        ? remoteMatches
+        : localMatches
+      : vendibleQuick.length > 0
+        ? vendibleQuick
+        : vendibleProducts.slice(0, 8);
 
   const totalCents = items.reduce((acc, it) => acc + it.totalPriceCents, 0);
   const totalFormatted = Money.fromCents(totalCents).format();
 
   const handleQueryChange = (val: string) => {
+    activeQueryIdRef.current++;
     setSearchQuery(val);
+    setRemoteMatches(null);
     setSelectedIndex(0);
     if (errorMessage) {
       dismissError();
     }
   };
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (filteredProducts.length > 0) {
@@ -61,18 +143,41 @@ export const SalesScreen: React.FC = () => {
 
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (filteredProducts.length === 0) {
+
+      let selectedProduct: CatalogProductItem | undefined =
+        filteredProducts[selectedIndex] || filteredProducts[0];
+
+      // If not found in current view, perform an immediate lookup before reporting not found
+      if (!selectedProduct && trimmed !== '' && session?.tenant?.id && session?.location?.id) {
+        try {
+          const results = await searchPosProducts(
+            session.tenant.id,
+            session.location.id,
+            trimmed,
+            connectionStatus === 'offline'
+          );
+          const vendible = results.filter((p) => p.isActive && p.isAvailable);
+          selectedProduct = vendible.find((p) => p.barcode === trimmed) || vendible[0];
+        } catch {
+          // Ignored
+        }
+      }
+
+      if (!selectedProduct) {
         setErrorMessage(`Producto no encontrado para "${searchQuery}"`);
         return;
       }
 
-      const selectedProduct = filteredProducts[selectedIndex] || filteredProducts[0];
-      if (selectedProduct) {
-        addItem(selectedProduct);
-        setSearchQuery('');
-        setSelectedIndex(0);
-        dismissError();
-      }
+      addItem({
+        productId: selectedProduct.id,
+        name: selectedProduct.name,
+        barcode: selectedProduct.barcode || undefined,
+        unitPriceCents: selectedProduct.salePriceCents,
+      });
+      setSearchQuery('');
+      setRemoteMatches(null);
+      setSelectedIndex(0);
+      dismissError();
     }
   };
 
@@ -115,10 +220,17 @@ export const SalesScreen: React.FC = () => {
       if (!isInputActive && !lastSaleSuccess && searchQuery.trim() === '') {
         const num = parseInt(e.key, 10);
         if (num >= 1 && num <= 8) {
-          const quick = QUICK_PRODUCTS.find((p) => p.shortcutNumber === num);
+          const quick =
+            quickProducts.find((p) => p.quickSlot === num && p.isActive && p.isAvailable) ||
+            products.find((p) => p.quickSlot === num && p.isActive && p.isAvailable);
           if (quick) {
             e.preventDefault();
-            addItem(quick);
+            addItem({
+              productId: quick.id,
+              name: quick.name,
+              barcode: quick.barcode || undefined,
+              unitPriceCents: quick.salePriceCents,
+            });
           }
         }
       }
@@ -131,6 +243,8 @@ export const SalesScreen: React.FC = () => {
     isTenderOpen,
     lastSaleSuccess,
     searchQuery,
+    quickProducts,
+    products,
     openTender,
     dismissSuccess,
     addItem,
@@ -148,7 +262,12 @@ export const SalesScreen: React.FC = () => {
 
     const selectedProduct = filteredProducts[selectedIndex] || filteredProducts[0];
     if (selectedProduct) {
-      addItem(selectedProduct);
+      addItem({
+        productId: selectedProduct.id,
+        name: selectedProduct.name,
+        barcode: selectedProduct.barcode || undefined,
+        unitPriceCents: selectedProduct.salePriceCents,
+      });
       setSearchQuery('');
       setSelectedIndex(0);
       dismissError();
@@ -324,7 +443,80 @@ export const SalesScreen: React.FC = () => {
             </span>
           </div>
 
-          {filteredProducts.length === 0 ? (
+          {isCatalogLoading && products.length === 0 ? (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                padding: '32px 16px',
+                textAlign: 'center',
+                backgroundColor: 'var(--color-surface-sunken)',
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-ink-muted)',
+                fontFamily: 'var(--font-sans)',
+                fontWeight: 700,
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              Cargando productos del catálogo...
+            </div>
+          ) : catalogError && products.length === 0 ? (
+            <div
+              role="alert"
+              style={{
+                padding: '24px 16px',
+                textAlign: 'center',
+                backgroundColor: 'var(--color-surface-sunken)',
+                border: '2px solid var(--color-danger, #D32F2F)',
+                color: 'var(--color-ink)',
+                fontFamily: 'var(--font-sans)',
+                fontWeight: 700,
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              <div>{catalogError}</div>
+              <button
+                type="button"
+                onClick={() =>
+                  session &&
+                  loadPosCatalog(
+                    session.tenant.id,
+                    session.location.id,
+                    connectionStatus === 'offline'
+                  )
+                }
+                style={{
+                  marginTop: '10px',
+                  padding: '6px 14px',
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  borderRadius: 'var(--radius-xs)',
+                }}
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : products.length === 0 && quickProducts.length === 0 && !searchQuery.trim() ? (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                padding: '36px 16px',
+                textAlign: 'center',
+                backgroundColor: 'var(--color-surface-sunken)',
+                border: '2px dashed var(--color-border)',
+                color: 'var(--color-ink-muted)',
+                fontFamily: 'var(--font-sans)',
+                fontWeight: 700,
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              No hay productos registrados en esta sucursal. Cargá tu catálogo desde la sección
+              Productos.
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div
               role="status"
               aria-live="polite"
@@ -355,10 +547,15 @@ export const SalesScreen: React.FC = () => {
 
                 return (
                   <button
-                    key={prod.productId}
+                    key={prod.id}
                     type="button"
                     onClick={() => {
-                      addItem(prod);
+                      addItem({
+                        productId: prod.id,
+                        name: prod.name,
+                        barcode: prod.barcode || undefined,
+                        unitPriceCents: prod.salePriceCents,
+                      });
                       setSearchQuery('');
                       setSelectedIndex(0);
                       dismissError();
@@ -389,7 +586,7 @@ export const SalesScreen: React.FC = () => {
                       position: 'relative',
                     }}
                   >
-                    {/* Header: Category tag + shortcut badge (only in quick ribbon) */}
+                    {/* Header: Category tag + shortcut badge */}
                     <div
                       style={{
                         display: 'flex',
@@ -405,11 +602,12 @@ export const SalesScreen: React.FC = () => {
                           fontWeight: 700,
                           color: 'var(--color-ink-muted)',
                           letterSpacing: '0.5px',
+                          textTransform: 'uppercase',
                         }}
                       >
                         {prod.category}
                       </span>
-                      {!isSearching && (
+                      {!isSearching && prod.quickSlot && (
                         <span
                           style={{
                             fontFamily: 'var(--font-mono)',
@@ -422,7 +620,7 @@ export const SalesScreen: React.FC = () => {
                             color: 'var(--color-ink)',
                           }}
                         >
-                          [{prod.shortcutNumber}]
+                          [{prod.quickSlot}]
                         </span>
                       )}
                     </div>
@@ -440,18 +638,35 @@ export const SalesScreen: React.FC = () => {
                       {prod.name}
                     </div>
 
-                    {/* Price (IBM Plex Mono bold) */}
+                    {/* Price and Stock */}
                     <div
                       style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        fontSize: 'var(--text-base)',
-                        color: 'var(--color-ink)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
                         marginTop: '8px',
-                        fontVariantNumeric: 'tabular-nums',
                       }}
                     >
-                      {Money.fromCents(prod.unitPriceCents).format()}
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          fontSize: 'var(--text-base)',
+                          color: 'var(--color-ink)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {Money.fromCents(prod.salePriceCents).format()}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--color-ink-muted)',
+                        }}
+                      >
+                        Stk: {parseFloat(prod.stockQuantity).toFixed(0)}
+                      </span>
                     </div>
                   </button>
                 );

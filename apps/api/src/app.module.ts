@@ -6,6 +6,7 @@ import { LocationsModule } from './locations/locations.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { SalesModule } from './sales/sales.module.js';
 import { SyncModule } from './sync/sync.module.js';
+import { CatalogModule } from './catalog/catalog.module.js';
 import { TestResetModule } from './test-utils/test-reset.module.js';
 
 import { APP_GUARD } from '@nestjs/core';
@@ -19,6 +20,7 @@ const dynamicImports = [
   AuthModule,
   SalesModule,
   SyncModule,
+  CatalogModule,
   ...(process.env.NODE_ENV === 'test' ? [TestResetModule] : []),
 ];
 

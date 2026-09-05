@@ -23,30 +23,41 @@ enum MembershipStatus {
   DISABLED
 }
 
+enum InventoryMovementType {
+  INITIAL
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  COUNT_CORRECTION
+}
+
 model User {
-  id              String             @id @default(cuid())
-  email           String
-  normalizedEmail String             @unique
-  name            String
-  passwordHash    String
-  status          UserStatus         @default(ACTIVE)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  memberships     TenantMembership[]
-  sessions        Session[]
+  id                 String              @id @default(cuid())
+  email              String
+  normalizedEmail    String              @unique
+  name               String
+  passwordHash       String
+  status             UserStatus          @default(ACTIVE)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  memberships        TenantMembership[]
+  sessions           Session[]
+  inventoryMovements InventoryMovement[]
 
   @@map("users")
 }
 
 model Tenant {
-  id          String             @id @default(cuid())
-  name        String
-  slug        String             @unique
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  locations   Location[]
-  memberships TenantMembership[]
-  sessions    Session[]
+  id                 String              @id @default(cuid())
+  name               String
+  slug               String              @unique
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  locations          Location[]
+  memberships        TenantMembership[]
+  sessions           Session[]
+  categories         Category[]
+  products           Product[]
+  inventoryMovements InventoryMovement[]
 
   @@map("tenants")
 }
@@ -70,16 +81,17 @@ model TenantMembership {
 }
 
 model Location {
-  id        String    @id @default(cuid())
-  tenantId  String
-  name      String
-  address   String?
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sessions Session[]
+  id                 String              @id @default(cuid())
+  tenantId           String
+  name               String
+  address            String?
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions           Session[]
+  productLocations   ProductLocation[]
+  inventoryMovements InventoryMovement[]
 
   @@index([tenantId])
   @@map("locations")
@@ -104,4 +116,88 @@ model Session {
   @@index([tenantId])
   @@index([tokenHash])
   @@map("sessions")
+}
+
+model Category {
+  id             String    @id @default(cuid())
+  tenantId       String
+  name           String
+  normalizedName String
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products       Product[]
+
+  @@unique([tenantId, normalizedName])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model Product {
+  id                 String              @id @default(cuid())
+  tenantId           String
+  categoryId         String?
+  name               String
+  normalizedName     String
+  barcode            String?
+  sku                String?
+  salePriceCents     Int
+  costPriceCents     Int?
+  unit               String              @default("UNIT")
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category           Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  locations          ProductLocation[]
+  inventoryMovements InventoryMovement[]
+
+  @@unique([tenantId, barcode])
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, normalizedName])
+  @@index([categoryId])
+  @@map("products")
+}
+
+model ProductLocation {
+  id            String    @id @default(cuid())
+  productId     String
+  locationId    String
+  stockQuantity Decimal   @default(0) @db.Decimal(12, 4)
+  minimumStock  Decimal   @default(0) @db.Decimal(12, 4)
+  isAvailable   Boolean   @default(true)
+  quickSlot     Int?
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location      Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationId])
+  @@unique([locationId, quickSlot])
+  @@index([locationId])
+  @@map("product_locations")
+}
+
+model InventoryMovement {
+  id             String                @id @default(cuid())
+  tenantId       String
+  locationId     String
+  productId      String
+  type           InventoryMovementType
+  delta          Decimal               @db.Decimal(12, 4)
+  previousStock  Decimal               @db.Decimal(12, 4)
+  resultingStock Decimal               @db.Decimal(12, 4)
+  reason         String
+  userId         String
+  createdAt      DateTime              @default(now())
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location       Location              @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  product        Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, locationId, productId, createdAt])
+  @@map("inventory_movements")
 }

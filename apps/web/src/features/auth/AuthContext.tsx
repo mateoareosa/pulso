@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { CurrentUserResponse, LoginInput, RegisterInput } from '@pulso/contracts';
 import { apiClient, ApiError, NetworkError } from '../../services/api-client';
+import { useCatalogStore } from '../catalog/store/catalog.store';
+import { offlineDb } from '../sync/offline-db';
 
 export type AuthStatus = 'INITIAL_CHECK' | 'AUTHENTICATED' | 'UNAUTHENTICATED' | 'NETWORK_ERROR';
 
@@ -14,7 +16,7 @@ export interface AuthContextType {
   retryBootstrap: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [status, setStatus] = useState<AuthStatus>('INITIAL_CHECK');
@@ -61,9 +63,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    useCatalogStore.getState().clearCatalog();
+    const clearDbPromise = offlineDb.clearCachedCatalog().catch(() => {});
+
     try {
       await apiClient.logout();
     } finally {
+      await clearDbPromise;
       setSession(null);
       setStatus('UNAUTHENTICATED');
     }
@@ -92,4 +98,8 @@ export function useAuth(): AuthContextType {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function useOptionalAuth(): AuthContextType | null {
+  return useContext(AuthContext);
 }

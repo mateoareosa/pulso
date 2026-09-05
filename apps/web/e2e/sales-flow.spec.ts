@@ -28,13 +28,144 @@ async function saveScreenshot(page: Page, name: string) {
   await page.screenshot({ path: localPath, fullPage: true });
 }
 
+async function seedDemoProducts(page: Page) {
+  await page.evaluate(async () => {
+    // 1. Create categories
+    const catRes1 = await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Golosinas' }),
+    });
+    const catGolosinas = await catRes1.json();
+
+    const catRes2 = await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Bebidas' }),
+    });
+    const catBebidas = await catRes2.json();
+
+    const catRes3 = await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Snacks' }),
+    });
+    const catSnacks = await catRes3.json();
+
+    // 2. Create the 8 demo products
+    const items = [
+      {
+        name: 'Alfajor Triple Dulce de Leche',
+        categoryId: catGolosinas.id,
+        barcode: '779001',
+        sku: 'ALF-01',
+        salePriceCents: 120000,
+        costPriceCents: 75000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 1,
+      },
+      {
+        name: 'Gaseosa Cola 500ml',
+        categoryId: catBebidas.id,
+        barcode: '779002',
+        sku: 'BEB-01',
+        salePriceCents: 150000,
+        costPriceCents: 95000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 2,
+      },
+      {
+        name: 'Agua Mineral 500ml',
+        categoryId: catBebidas.id,
+        barcode: '779003',
+        sku: 'BEB-02',
+        salePriceCents: 100000,
+        costPriceCents: 60000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 3,
+      },
+      {
+        name: 'Turrón de Maní',
+        categoryId: catGolosinas.id,
+        barcode: '779004',
+        sku: 'GOL-02',
+        salePriceCents: 45000,
+        costPriceCents: 28000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 4,
+      },
+      {
+        name: 'Chicles Menta Fuerte',
+        categoryId: catGolosinas.id,
+        barcode: '779005',
+        sku: 'GOL-03',
+        salePriceCents: 60000,
+        costPriceCents: 35000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 5,
+      },
+      {
+        name: 'Caramelos Ácidos x10',
+        categoryId: catGolosinas.id,
+        barcode: '779006',
+        sku: 'GOL-04',
+        salePriceCents: 80000,
+        costPriceCents: 50000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 6,
+      },
+      {
+        name: 'Galletitas Rellenas Vainilla',
+        categoryId: catSnacks.id,
+        barcode: '779007',
+        sku: 'SNK-01',
+        salePriceCents: 180000,
+        costPriceCents: 110000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 7,
+      },
+      {
+        name: 'Barra de Cereal Frutilla',
+        categoryId: catSnacks.id,
+        barcode: '779008',
+        sku: 'SNK-02',
+        salePriceCents: 90000,
+        costPriceCents: 55000,
+        initialStock: '50.0000',
+        minimumStock: '10.0000',
+        quickSlot: 8,
+      },
+    ];
+
+    for (const item of items) {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+  });
+
+  await page.reload();
+  await expect(page.locator('.pulso-ribbon')).toBeVisible();
+  await expect(page.locator('button:has-text("Alfajor Triple Dulce de Leche")')).toBeVisible();
+}
+
 async function registerBusiness(
   page: Page,
   businessName = 'Kiosco El Trébol',
   locationName = 'Casa Central',
   ownerName = 'Operador Mostrador',
   email = 'operador@kiosco.com',
-  password = 'passwordSegura123!'
+  password = 'passwordSegura123!',
+  seedProducts = false
 ) {
   await page.goto('/');
 
@@ -60,6 +191,10 @@ async function registerBusiness(
   const ribbon = page.locator('.pulso-ribbon');
   await expect(ribbon).toBeVisible();
   await expect(ribbon).toContainText(businessName);
+
+  if (seedProducts) {
+    await seedDemoProducts(page);
+  }
 }
 
 test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2E Suite', () => {
@@ -99,7 +234,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
       'Casa Central',
       'Operador Mostrador',
       'operador@kiosco.com',
-      'passwordSegura123!'
+      'passwordSegura123!',
+      true
     );
 
     const ribbon = page.locator('.pulso-ribbon');
@@ -212,7 +348,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
         'Casa Central',
         'Operador Mostrador',
         `operador-${vp.label}@kiosco.com`,
-        'passwordSegura123!'
+        'passwordSegura123!',
+        true
       );
 
       const ribbon = page.locator('.pulso-ribbon');
@@ -353,7 +490,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
       'Casa Central',
       'Operador Offline',
       'offline@kiosco.com',
-      'passwordSegura123!'
+      'passwordSegura123!',
+      true
     );
 
     // Toggle to offline
@@ -396,7 +534,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
       'Casa Central',
       'Operador Error',
       'error@kiosco.com',
-      'passwordSegura123!'
+      'passwordSegura123!',
+      true
     );
 
     const searchInput = page.locator('input[aria-label="Escanear o buscar producto"]');
@@ -420,7 +559,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
       'Casa Central',
       'Operador Noche',
       'noche@kiosco.com',
-      'passwordSegura123!'
+      'passwordSegura123!',
+      true
     );
 
     const themeBtn = page.locator('button[aria-label*="Cambiar a modo"]').first();

@@ -45,6 +45,28 @@ describe('Seed Script Atomicity & Slug Derivation', () => {
       where: { tenantId: tenantInDb!.id, userId: userInDb!.id },
     });
     expect(membershipInDb?.role).toBe('OWNER');
+
+    // Verify 3 categories seeded
+    const categoriesCount = await testPrisma.category.count({
+      where: { tenantId: tenantInDb!.id },
+    });
+    expect(categoriesCount).toBe(3);
+
+    // Verify 8 products seeded with quick slots 1-8
+    const productsInDb = await testPrisma.product.findMany({
+      where: { tenantId: tenantInDb!.id },
+      include: { locations: true },
+    });
+    expect(productsInDb).toHaveLength(8);
+
+    const slots = productsInDb.map((p) => p.locations[0]?.quickSlot).sort();
+    expect(slots).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+
+    // Verify movements recorded
+    const movementsCount = await testPrisma.inventoryMovement.count({
+      where: { tenantId: tenantInDb!.id },
+    });
+    expect(movementsCount).toBe(8);
   });
 
   it('resolves slug collision automatically when multiple seeds share the same business name', async () => {

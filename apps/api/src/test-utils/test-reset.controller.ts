@@ -1,6 +1,16 @@
-import { Controller, Post, HttpCode, ForbiddenException, Inject, Optional } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  ForbiddenException,
+  NotFoundException,
+  Inject,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RateLimiterService } from '../auth/rate-limiter.service.js';
+import { normalizeEmail } from '../auth/security.utils.js';
 
 @Controller('test')
 export class TestResetController {
@@ -19,5 +29,28 @@ export class TestResetController {
     await this.prisma.cleanDatabaseForTesting();
     this.rateLimiter?.reset();
     return { success: true, message: 'Database reset successfully' };
+  }
+
+  @Post('set-role')
+  @HttpCode(200)
+  async setRole(@Body() body: { email: string; role: 'OWNER' | 'MANAGER' | 'CASHIER' }) {
+    if (process.env.NODE_ENV !== 'test') {
+      throw new ForbiddenException('Only permitted in test environments');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { normalizedEmail: normalizeEmail(body.email) },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.tenantMembership.updateMany({
+      where: { userId: user.id },
+      data: { role: body.role },
+    });
+
+    return { success: true, role: body.role };
   }
 }

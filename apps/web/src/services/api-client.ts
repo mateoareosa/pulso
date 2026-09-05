@@ -23,7 +23,7 @@ export class NetworkError extends Error {
   }
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type') && options.body) {
     headers.set('Content-Type', 'application/json');
@@ -66,12 +66,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const apiClient = {
   async getCurrentSession(): Promise<CurrentUserResponse> {
-    const data = await request<CurrentUserResponse>('/api/auth/me');
+    const data = await apiRequest<CurrentUserResponse>('/api/auth/me');
     return CurrentUserResponseSchema.parse(data);
   },
 
   async login(credentials: LoginInput): Promise<CurrentUserResponse> {
-    const data = await request<CurrentUserResponse>('/api/auth/login', {
+    const data = await apiRequest<CurrentUserResponse>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
@@ -79,7 +79,7 @@ export const apiClient = {
   },
 
   async register(input: RegisterInput): Promise<CurrentUserResponse> {
-    const data = await request<CurrentUserResponse>('/api/auth/register', {
+    const data = await apiRequest<CurrentUserResponse>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(input),
     });
@@ -87,7 +87,7 @@ export const apiClient = {
   },
 
   async logout(): Promise<void> {
-    await request<{ success: boolean }>('/api/auth/logout', {
+    await apiRequest<{ success: boolean }>('/api/auth/logout', {
       method: 'POST',
     });
   },

@@ -230,4 +230,134 @@ describe('Frontend Authentication Lifecycle & Components', () => {
       expect(screen.getByRole('heading', { name: /Acceso a Mostrador/i })).toBeDefined();
     });
   });
+
+  it('integrated AuthContext.logout clears Zustand, clears cachedProducts, and preserves syncQueue', async () => {
+    const { useCatalogStore } = await import('../src/features/catalog/store/catalog.store');
+    const { offlineDb } = await import('../src/features/sync/offline-db');
+    const { catalogApi } = await import('../src/features/catalog/services/catalog-api');
+
+    // 1. Prepare session and mocks
+    vi.spyOn(apiClient, 'getCurrentSession').mockResolvedValue(mockAuthenticatedSession);
+    vi.spyOn(apiClient, 'logout').mockResolvedValue();
+    vi.spyOn(catalogApi, 'fetchProducts').mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      totalPages: 1,
+    });
+    vi.spyOn(catalogApi, 'fetchQuickProducts').mockResolvedValue([]);
+    vi.spyOn(catalogApi, 'fetchCategories').mockResolvedValue([]);
+
+    // 2. Populate Zustand catalog state
+    useCatalogStore.setState({
+      products: [
+        {
+          id: 'prod-to-clear-1',
+          name: 'Alfajor Zustand',
+          category: 'Golosinas',
+          salePriceCents: 1000,
+          stockQuantity: '10.0000',
+          minimumStock: '0.0000',
+          isActive: true,
+          isAvailable: true,
+          version: 1,
+        },
+      ],
+      quickProducts: [
+        {
+          id: 'prod-to-clear-1',
+          name: 'Alfajor Zustand',
+          category: 'Golosinas',
+          salePriceCents: 1000,
+          stockQuantity: '10.0000',
+          minimumStock: '0.0000',
+          isActive: true,
+          isAvailable: true,
+          version: 1,
+        },
+      ],
+      total: 1,
+    });
+
+    // 3. Populate offlineDb cachedProducts
+    await offlineDb.cacheProducts('ten_1', 'loc_1', [
+      {
+        id: 'prod-to-clear-1',
+        tenantId: 'ten_1',
+        categoryId: null,
+        name: 'Alfajor Cached',
+        normalizedName: 'alfajor cached',
+        barcode: '111222',
+        sku: null,
+        salePriceCents: 1000,
+        costPriceCents: null,
+        unit: 'UNIT',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        locationSettings: {
+          productId: 'prod-to-clear-1',
+          locationId: 'loc_1',
+          stockQuantity: '10.0000',
+          minimumStock: '0.0000',
+          isAvailable: true,
+          quickSlot: 1,
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    ]);
+
+    // 4. Populate syncQueue with a pending sale
+    await offlineDb.enqueueSale({
+      shiftId: 'shift-1',
+      idempotencyKey: 'pending-sale-preserve-logout',
+      items: [
+        { productId: 'p1', name: 'Item', quantity: 1, unitPriceCents: 1000, totalPriceCents: 1000 },
+      ],
+      tenders: [
+        { type: 'CASH', amountCents: 1000, receivedAmountCents: 1000, changeAmountCents: 0 },
+      ],
+      totalCents: 1000,
+      createdAtUtc: new Date().toISOString(),
+    });
+
+    expect(useCatalogStore.getState().products).toHaveLength(1);
+    expect(await offlineDb.getCachedProducts('ten_1', 'loc_1')).toHaveLength(1);
+    expect(await offlineDb.getAllPending()).toHaveLength(1);
+
+    // 5. Render App and click logout
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Cerrar sesión/i })).toBeDefined();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Cerrar sesión/i }));
+    });
+
+    // 6. Verify Zustand is emptied
+    await waitFor(() => {
+      expect(useCatalogStore.getState().products).toHaveLength(0);
+      expect(useCatalogStore.getState().quickProducts).toHaveLength(0);
+      expect(useCatalogStore.getState().total).toBe(0);
+    });
+
+    // 7. Verify cachedProducts is empty
+    await waitFor(async () => {
+      const cachedRemaining = await offlineDb.getCachedProducts('ten_1', 'loc_1', {
+        onlyActive: false,
+        onlyAvailable: false,
+      });
+      expect(cachedRemaining).toHaveLength(0);
+    });
+
+    // 8. Verify syncQueue is PRESERVED
+    const pendingRemaining = await offlineDb.getAllPending();
+    expect(pendingRemaining).toHaveLength(1);
+    expect(pendingRemaining[0]?.payload.idempotencyKey).toBe('pending-sale-preserve-logout');
+  });
 });

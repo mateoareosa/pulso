@@ -1,13 +1,130 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { SalesScreen } from '../src/features/sales/components/SalesScreen';
 import { useSalesStore } from '../src/features/sales/store/sales.store';
+import { useCatalogStore, CatalogProductItem } from '../src/features/catalog/store/catalog.store';
+import { AuthContext } from '../src/features/auth/AuthContext';
+
+const DEMO_PRODUCTS: CatalogProductItem[] = [
+  {
+    id: 'prod-01',
+    name: 'Alfajor Triple Dulce de Leche',
+    category: 'GOLOSINAS',
+    barcode: '779001',
+    salePriceCents: 120000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 1,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-02',
+    name: 'Gaseosa Cola 500ml',
+    category: 'BEBIDAS',
+    barcode: '779002',
+    salePriceCents: 150000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 2,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-03',
+    name: 'Agua Mineral 500ml',
+    category: 'BEBIDAS',
+    barcode: '779003',
+    salePriceCents: 100000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 3,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-04',
+    name: 'Turrón de Maní',
+    category: 'GOLOSINAS',
+    barcode: '779004',
+    salePriceCents: 45000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 4,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-05',
+    name: 'Chicles Menta Fuerte',
+    category: 'GOLOSINAS',
+    barcode: '779005',
+    salePriceCents: 60000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 5,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-06',
+    name: 'Caramelos Ácidos x10',
+    category: 'GOLOSINAS',
+    barcode: '779006',
+    salePriceCents: 80000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 6,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-07',
+    name: 'Galletitas Rellenas Vainilla',
+    category: 'SNACKS',
+    barcode: '779007',
+    salePriceCents: 180000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 7,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+  {
+    id: 'prod-08',
+    name: 'Barra de Cereal Frutilla',
+    category: 'SNACKS',
+    barcode: '779008',
+    salePriceCents: 90000,
+    stockQuantity: '50.0000',
+    minimumStock: '10.0000',
+    quickSlot: 8,
+    isActive: true,
+    isAvailable: true,
+    version: 1,
+  },
+];
 
 describe('SalesScreen Operational Flow', () => {
   beforeEach(() => {
     useSalesStore.getState().clearCart();
     useSalesStore.getState().dismissSuccess();
     useSalesStore.getState().setConnectionStatus('online');
+
+    useCatalogStore.setState({
+      products: DEMO_PRODUCTS,
+      quickProducts: DEMO_PRODUCTS,
+      total: DEMO_PRODUCTS.length,
+      isLoading: false,
+      error: null,
+    });
   });
 
   it('renders initial empty sales screen with barcode input and empty receipt', () => {
@@ -289,6 +406,381 @@ describe('SalesScreen Operational Flow', () => {
 
       expect(useSalesStore.getState().lastSaleSuccess).toBeNull();
       expect(screen.queryByText(/VENTA CONFIRMADA/i)).toBeNull();
+    });
+  });
+
+  describe('Vendible Separation & Large Catalog (> 100 products)', () => {
+    it('excludes inactive products and branch-unavailable products from quick ribbon and search', () => {
+      const mixedProducts: CatalogProductItem[] = [
+        {
+          id: 'p-active-avail',
+          name: 'Alfajor Disponible',
+          category: 'GOLOSINAS',
+          barcode: '779100',
+          salePriceCents: 1000,
+          stockQuantity: '10.0000',
+          minimumStock: '1.0000',
+          quickSlot: 1,
+          isActive: true,
+          isAvailable: true,
+          version: 1,
+        },
+        {
+          id: 'p-inactive',
+          name: 'Alfajor Inactivo Global',
+          category: 'GOLOSINAS',
+          barcode: '779200',
+          salePriceCents: 1000,
+          stockQuantity: '10.0000',
+          minimumStock: '1.0000',
+          quickSlot: 2,
+          isActive: false,
+          isAvailable: true,
+          version: 1,
+        },
+        {
+          id: 'p-unavailable-branch',
+          name: 'Alfajor No Disponible Sucursal',
+          category: 'GOLOSINAS',
+          barcode: '779300',
+          salePriceCents: 1000,
+          stockQuantity: '10.0000',
+          minimumStock: '1.0000',
+          quickSlot: 3,
+          isActive: true,
+          isAvailable: false,
+          version: 1,
+        },
+      ];
+
+      useCatalogStore.setState({
+        products: mixedProducts,
+        quickProducts: mixedProducts,
+      });
+
+      render(<SalesScreen />);
+
+      // Only the active and available product is shown in ribbon
+      expect(screen.getByText('Alfajor Disponible')).toBeDefined();
+      expect(screen.queryByText('Alfajor Inactivo Global')).toBeNull();
+      expect(screen.queryByText('Alfajor No Disponible Sucursal')).toBeNull();
+
+      // Typing in search input also does NOT find unavailable or inactive products
+      const searchInput = screen.getByPlaceholderText(/Escanear código o buscar producto/i);
+      fireEvent.change(searchInput, { target: { value: 'Inactivo' } });
+      expect(screen.queryByText('Alfajor Inactivo Global')).toBeNull();
+
+      fireEvent.change(searchInput, { target: { value: 'No Disponible' } });
+      expect(screen.queryByText('Alfajor No Disponible Sucursal')).toBeNull();
+    });
+
+    it('searches dynamically for product 101 via searchPosProducts and adds to cart on Enter', async () => {
+      const mockSearchPos = vi.fn().mockResolvedValue([
+        {
+          id: 'prod-101',
+          name: 'Producto Especial 101',
+          category: 'ESPECIAL',
+          barcode: '779101',
+          salePriceCents: 99900,
+          stockQuantity: '15.0000',
+          minimumStock: '2.0000',
+          quickSlot: null,
+          isActive: true,
+          isAvailable: true,
+          version: 1,
+        },
+      ]);
+
+      useCatalogStore.setState({
+        products: DEMO_PRODUCTS,
+        quickProducts: DEMO_PRODUCTS,
+        searchPosProducts: mockSearchPos,
+      });
+
+      // Provide auth session context
+      const mockSession = {
+        sessionId: 's-1',
+        userId: 'u-1',
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+        membershipId: 'm-1',
+        role: 'CASHIER' as const,
+        user: { id: 'u-1', email: 'c@p.dev', name: 'Cajero' },
+        tenant: { id: 'tenant-1', name: 'T', slug: 't' },
+        location: { id: 'loc-1', name: 'L' },
+        expiresAt: '',
+      };
+
+      render(
+        <AuthContext.Provider
+          value={{
+            status: 'AUTHENTICATED',
+            session: mockSession,
+            errorMessage: null,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+            retryBootstrap: vi.fn(),
+          }}
+        >
+          <SalesScreen />
+        </AuthContext.Provider>
+      );
+
+      const searchInput = screen.getByPlaceholderText(/Escanear código o buscar producto/i);
+      fireEvent.change(searchInput, { target: { value: '779101' } });
+
+      // Press Enter directly to trigger instant lookup
+      await act(async () => {
+        fireEvent.keyDown(searchInput, { key: 'Enter' });
+      });
+
+      // Should add product-101 to the sales cart
+      await waitFor(() => {
+        expect(useSalesStore.getState().items[0]?.name).toBe('Producto Especial 101');
+        expect(useSalesStore.getState().items[0]?.unitPriceCents).toBe(99900);
+      });
+    });
+
+    it('invalidates previous remote search matches immediately upon changing input and never adds stale query result on Enter', async () => {
+      let resolveAguaPromise: ((val: CatalogProductItem[]) => void) | null = null;
+      let resolveAlfajorPromise: ((val: CatalogProductItem[]) => void) | null = null;
+
+      const mockSearch = vi.fn().mockImplementation((_t, _l, query: string) => {
+        if (query === 'Agua') {
+          return new Promise((resolve) => {
+            resolveAguaPromise = resolve;
+          });
+        }
+        if (query === 'Alfajor') {
+          return new Promise((resolve) => {
+            resolveAlfajorPromise = resolve;
+          });
+        }
+        return Promise.resolve([]);
+      });
+
+      const mockSession = {
+        sessionId: 's-1',
+        userId: 'u-1',
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+        membershipId: 'm-1',
+        role: 'CASHIER' as const,
+        user: { id: 'u-1', email: 'c@p.dev', name: 'Cajero' },
+        tenant: { id: 'tenant-1', name: 'T', slug: 't' },
+        location: { id: 'loc-1', name: 'L' },
+        expiresAt: '',
+      };
+
+      useCatalogStore.setState({
+        products: [],
+        quickProducts: [],
+        error: null,
+        loadPosCatalog: vi.fn().mockResolvedValue(undefined),
+        searchPosProducts: mockSearch,
+      });
+
+      render(
+        <AuthContext.Provider
+          value={{
+            status: 'AUTHENTICATED',
+            session: mockSession,
+            errorMessage: null,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+            retryBootstrap: vi.fn(),
+          }}
+        >
+          <SalesScreen />
+        </AuthContext.Provider>
+      );
+
+      const searchInput = screen.getByPlaceholderText(/Escanear código o buscar producto/i);
+
+      // 1. Search "Agua" and wait for debounce to trigger
+      fireEvent.change(searchInput, { target: { value: 'Agua' } });
+
+      // Fast-forward 150ms debounce
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 160));
+      });
+
+      // Resolve "Agua" with water product
+      await act(async () => {
+        resolveAguaPromise?.([
+          {
+            id: 'prod-agua',
+            name: 'Agua Mineral 500ml',
+            category: 'Bebidas',
+            barcode: '779003',
+            salePriceCents: 10000,
+            stockQuantity: '10.0000',
+            minimumStock: '0.0000',
+            isActive: true,
+            isAvailable: true,
+            version: 1,
+          },
+        ]);
+      });
+
+      // Assert Agua is displayed in results
+      expect(screen.getByText('Agua Mineral 500ml')).toBeDefined();
+
+      // 2. Rapidly change to "Alfajor"
+      fireEvent.change(searchInput, { target: { value: 'Alfajor' } });
+
+      // Immediate invalidation: "Agua Mineral 500ml" must be gone immediately!
+      expect(screen.queryByText('Agua Mineral 500ml')).toBeNull();
+
+      // 3. Press Enter BEFORE debounce finishes
+      await act(async () => {
+        fireEvent.keyDown(searchInput, { key: 'Enter' });
+      });
+
+      // 4. Resolve "Alfajor" query
+      await act(async () => {
+        resolveAlfajorPromise?.([
+          {
+            id: 'prod-alfajor',
+            name: 'Alfajor de Chocolate',
+            category: 'Golosinas',
+            barcode: '779001',
+            salePriceCents: 15000,
+            stockQuantity: '20.0000',
+            minimumStock: '0.0000',
+            isActive: true,
+            isAvailable: true,
+            version: 1,
+          },
+        ]);
+      });
+
+      // 5. Verify Agua is NEVER added; Alfajor is added!
+      const items = useSalesStore.getState().items;
+      expect(items).toHaveLength(1);
+      expect(items[0]?.name).toBe('Alfajor de Chocolate');
+      expect(items.find((it) => it.name === 'Agua Mineral 500ml')).toBeUndefined();
+    });
+
+    it('initializes POS via loadPosCatalog ignoring administrative statusFilter=INACTIVE and preserving admin state', async () => {
+      const mockLoadPos = vi.fn().mockResolvedValue(undefined);
+
+      const mockSession = {
+        sessionId: 's-1',
+        userId: 'u-1',
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+        membershipId: 'm-1',
+        role: 'CASHIER' as const,
+        user: { id: 'u-1', email: 'c@p.dev', name: 'Cajero' },
+        tenant: { id: 'tenant-1', name: 'T', slug: 't' },
+        location: { id: 'loc-1', name: 'L' },
+        expiresAt: '',
+      };
+
+      // Simulate administrative state where statusFilter was set to INACTIVE and page was 3
+      useCatalogStore.setState({
+        statusFilter: 'INACTIVE',
+        page: 3,
+        searchQuery: 'admin-search',
+        selectedCategory: 'cat-admin',
+        loadPosCatalog: mockLoadPos,
+        quickProducts: DEMO_PRODUCTS.slice(0, 8),
+      });
+
+      render(
+        <AuthContext.Provider
+          value={{
+            status: 'AUTHENTICATED',
+            session: mockSession,
+            errorMessage: null,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+            retryBootstrap: vi.fn(),
+          }}
+        >
+          <SalesScreen />
+        </AuthContext.Provider>
+      );
+
+      // Verify loadPosCatalog was invoked with tenant and location
+      expect(mockLoadPos).toHaveBeenCalledWith('tenant-1', 'loc-1', false);
+
+      // Verify administrative state was NOT corrupted or reset by POS initialization
+      expect(useCatalogStore.getState().statusFilter).toBe('INACTIVE');
+      expect(useCatalogStore.getState().page).toBe(3);
+      expect(useCatalogStore.getState().searchQuery).toBe('admin-search');
+
+      // Verify quick ribbon is intact and shows vendible items
+      expect(screen.getByText('Alfajor Triple Dulce de Leche')).toBeDefined();
+    });
+
+    it('quick slots 1-8 are accessible via keyboard shortcuts [1]-[8] even when products are outside page 1 (> 100 products)', async () => {
+      const mockSession = {
+        sessionId: 's-1',
+        userId: 'u-1',
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+        membershipId: 'm-1',
+        role: 'CASHIER' as const,
+        user: { id: 'u-1', email: 'c@p.dev', name: 'Cajero' },
+        tenant: { id: 'tenant-1', name: 'T', slug: 't' },
+        location: { id: 'loc-1', name: 'L' },
+        expiresAt: '',
+      };
+
+      // Create quick products representing items outside page 1
+      const outsidePageQuickProducts: CatalogProductItem[] = Array.from({ length: 8 }, (_, i) => ({
+        id: `prod-outside-qs-${i + 1}`,
+        name: `Zebra Quick Product Slot ${i + 1}`,
+        category: 'Golosinas',
+        barcode: `779999000${i + 1}`,
+        salePriceCents: (i + 1) * 1000,
+        stockQuantity: '10.0000',
+        minimumStock: '0.0000',
+        quickSlot: i + 1,
+        isActive: true,
+        isAvailable: true,
+        version: 1,
+      }));
+
+      useCatalogStore.setState({
+        products: [], // Empty or different page
+        quickProducts: outsidePageQuickProducts,
+        loadPosCatalog: vi.fn().mockResolvedValue(undefined),
+      });
+
+      render(
+        <AuthContext.Provider
+          value={{
+            status: 'AUTHENTICATED',
+            session: mockSession,
+            errorMessage: null,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+            retryBootstrap: vi.fn(),
+          }}
+        >
+          <SalesScreen />
+        </AuthContext.Provider>
+      );
+
+      // Verify all 8 slots are visible in the ribbon
+      for (let slot = 1; slot <= 8; slot++) {
+        expect(screen.getByText(`Zebra Quick Product Slot ${slot}`)).toBeDefined();
+      }
+
+      // Press shortcut [1]
+      fireEvent.keyDown(window, { key: '1' });
+      expect(useSalesStore.getState().items[0]?.name).toBe('Zebra Quick Product Slot 1');
+
+      // Press shortcut [8]
+      fireEvent.keyDown(window, { key: '8' });
+      expect(useSalesStore.getState().items[1]?.name).toBe('Zebra Quick Product Slot 8');
     });
   });
 });
