@@ -143,6 +143,7 @@ export const INVENTORY_MOVEMENT_TYPES = [
   'ADJUSTMENT_IN',
   'ADJUSTMENT_OUT',
   'COUNT_CORRECTION',
+  'SALE',
 ] as const;
 
 export type InventoryMovementType = (typeof INVENTORY_MOVEMENT_TYPES)[number];

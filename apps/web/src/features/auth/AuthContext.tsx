@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { CurrentUserResponse, LoginInput, RegisterInput } from '@pulso/contracts';
 import { apiClient, ApiError, NetworkError } from '../../services/api-client';
 import { useCatalogStore } from '../catalog/store/catalog.store';
+import { useSalesStore } from '../sales/store/sales.store';
 import { offlineDb } from '../sync/offline-db';
 
 export type AuthStatus = 'INITIAL_CHECK' | 'AUTHENTICATED' | 'UNAUTHENTICATED' | 'NETWORK_ERROR';
@@ -35,9 +36,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStatus('NETWORK_ERROR');
         setErrorMessage('No se pudo conectar con el servidor. Verifique que la API esté activa.');
       } else if (err instanceof ApiError && err.status === 401) {
+        useSalesStore.getState().clearSalesSession();
         setSession(null);
         setStatus('UNAUTHENTICATED');
       } else {
+        useSalesStore.getState().clearSalesSession();
         setSession(null);
         setStatus('UNAUTHENTICATED');
       }
@@ -50,6 +53,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials: LoginInput) => {
     setErrorMessage(null);
+    useSalesStore.getState().clearSalesSession();
     const data = await apiClient.login(credentials);
     setSession(data);
     setStatus('AUTHENTICATED');
@@ -57,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (input: RegisterInput) => {
     setErrorMessage(null);
+    useSalesStore.getState().clearSalesSession();
     const data = await apiClient.register(input);
     setSession(data);
     setStatus('AUTHENTICATED');
@@ -64,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     useCatalogStore.getState().clearCatalog();
+    useSalesStore.getState().clearSalesSession();
     const clearDbPromise = offlineDb.clearCachedCatalog().catch(() => {});
 
     try {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { App } from '../src/App';
 import { useSalesStore } from '../src/features/sales/store/sales.store';
 import { apiClient } from '../src/services/api-client';
@@ -51,5 +51,31 @@ describe('App Root Component - Clean Production Shell', () => {
     // Fictive cash amount must not be displayed
     expect(screen.queryByText(/\$ 45\.200,00/)).toBeNull();
     expect(screen.queryByText(/Caja:/i)).toBeNull();
+  });
+
+  it('allows navigating between MOSTRADOR, HISTORIAL and PRODUCTOS tabs', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /HISTORIAL/i })).toBeDefined();
+    });
+
+    // Click HISTORIAL
+    fireEvent.click(screen.getByRole('tab', { name: /HISTORIAL/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/HISTORIAL DE VENTAS/i)).toBeDefined();
+    });
+
+    // Click PRODUCTOS
+    fireEvent.click(screen.getByRole('tab', { name: /PRODUCTOS/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Productos e Inventario/i)).toBeDefined();
+    });
+
+    // Back to MOSTRADOR
+    fireEvent.click(screen.getByRole('tab', { name: /MOSTRADOR/i }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Escanear código o buscar producto/i)).toBeDefined();
+    });
   });
 });

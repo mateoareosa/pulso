@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useSalesStore } from '../src/features/sales/store/sales.store';
 import { offlineDb } from '../src/features/sync/offline-db';
+import { salesApi } from '../src/features/sales/services/sales-api';
 import 'fake-indexeddb/auto'; // Mock indexedDB in Node/jsdom
 
 describe('E2E Simulated Sales Flow with Offline Resilience', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
     useSalesStore.getState().clearCart();
     useSalesStore.getState().dismissSuccess();
     useSalesStore.getState().setConnectionStatus('online');
@@ -46,7 +48,10 @@ describe('E2E Simulated Sales Flow with Offline Resilience', () => {
     const receivedCents = 500000;
     const changeCents = 230000; // $2.300,00 change
 
-    await useSalesStore.getState().processCashPayment(receivedCents, changeCents);
+    await useSalesStore.getState().processCashPayment(receivedCents, changeCents, {
+      tenantId: 'tenant-1',
+      locationId: 'loc-1',
+    });
 
     // 4. Cart cleared and Success Seal rendered with offline indicator
     const stateAfterSale = useSalesStore.getState();
@@ -68,10 +73,21 @@ describe('E2E Simulated Sales Flow with Offline Resilience', () => {
     expect(useSalesStore.getState().pendingSyncCount).toBe(1);
 
     // 6. Connectivity restored and synchronization triggered
-    await useSalesStore.getState().syncPendingSales();
+    vi.spyOn(salesApi, 'syncBatch').mockImplementation(async (batch) => ({
+      syncedCount: batch.operations.length,
+      results: batch.operations.map((op: { operationId: string }) => ({
+        operationId: op.operationId,
+        status: 'SYNCED',
+        idempotentReplay: false,
+        saleId: `synced-${op.operationId}`,
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+      })),
+    }));
+    await useSalesStore.getState().syncPendingSales({ tenantId: 'tenant-1', locationId: 'loc-1' });
 
     // 7. Verify sync completion: queue is clear, connection back to online
-    const finalPending = await offlineDb.getPendingCount();
+    const finalPending = await offlineDb.getPendingCount('tenant-1', 'loc-1');
     expect(finalPending).toBe(0);
     expect(useSalesStore.getState().connectionStatus).toBe('online');
     expect(useSalesStore.getState().pendingSyncCount).toBe(0);

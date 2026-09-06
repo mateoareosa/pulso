@@ -112,6 +112,29 @@ const DEMO_PRODUCTS: CatalogProductItem[] = [
   },
 ];
 
+const defaultMockSession = {
+  sessionId: 's-1',
+  userId: 'u-1',
+  tenantId: 'tenant-1',
+  locationId: 'loc-1',
+  membershipId: 'm-1',
+  role: 'CASHIER' as const,
+  user: { id: 'u-1', email: 'c@p.dev', name: 'Cajero' },
+  tenant: { id: 'tenant-1', name: 'T', slug: 't' },
+  location: { id: 'loc-1', name: 'L' },
+  expiresAt: '',
+};
+
+const defaultMockAuthContext = {
+  status: 'AUTHENTICATED' as const,
+  session: defaultMockSession,
+  errorMessage: null,
+  login: vi.fn(),
+  register: vi.fn(),
+  logout: vi.fn(),
+  retryBootstrap: vi.fn(),
+};
+
 describe('SalesScreen Operational Flow', () => {
   beforeEach(() => {
     useSalesStore.getState().clearCart();
@@ -355,7 +378,11 @@ describe('SalesScreen Operational Flow', () => {
 
   describe('Post-sale Success Screen Confirmation', () => {
     it('dismisses success and starts new sale with Enter key', async () => {
-      render(<SalesScreen />);
+      render(
+        <AuthContext.Provider value={defaultMockAuthContext}>
+          <SalesScreen />
+        </AuthContext.Provider>
+      );
 
       // Add product and tender
       fireEvent.click(screen.getByText('Turrón de Maní'));
@@ -384,7 +411,11 @@ describe('SalesScreen Operational Flow', () => {
     });
 
     it('dismisses success and starts new sale with Escape key', async () => {
-      render(<SalesScreen />);
+      render(
+        <AuthContext.Provider value={defaultMockAuthContext}>
+          <SalesScreen />
+        </AuthContext.Provider>
+      );
 
       fireEvent.click(screen.getByText('Turrón de Maní'));
       fireEvent.click(screen.getByText(/COBRAR EN EFECTIVO/i));
@@ -602,9 +633,9 @@ describe('SalesScreen Operational Flow', () => {
       // 1. Search "Agua" and wait for debounce to trigger
       fireEvent.change(searchInput, { target: { value: 'Agua' } });
 
-      // Fast-forward 150ms debounce
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 160));
+      // Wait for debounce to trigger search
+      await waitFor(() => {
+        expect(mockSearch).toHaveBeenCalledWith('tenant-1', 'loc-1', 'Agua', false);
       });
 
       // Resolve "Agua" with water product
@@ -626,7 +657,9 @@ describe('SalesScreen Operational Flow', () => {
       });
 
       // Assert Agua is displayed in results
-      expect(screen.getByText('Agua Mineral 500ml')).toBeDefined();
+      await waitFor(() => {
+        expect(screen.getByText('Agua Mineral 500ml')).toBeDefined();
+      });
 
       // 2. Rapidly change to "Alfajor"
       fireEvent.change(searchInput, { target: { value: 'Alfajor' } });

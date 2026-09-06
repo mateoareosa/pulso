@@ -59,24 +59,27 @@ describe('Catalog Concurrency, Session Invalidation & Epoch Sequencing', () => {
   describe('BLOQUEANTE 1: Invalidación de Sesión y Logout', () => {
     it('in-flight syncAllAvailableProductsToOffline resolving after logout does not repopulate store or IndexedDB and preserves syncQueue', async () => {
       // 1. Enqueue a pending sale in syncQueue to prove it is preserved
-      await offlineDb.enqueueSale({
-        shiftId: 'shift-1',
-        idempotencyKey: 'pending-sale-preserved-1',
-        items: [
-          {
-            productId: 'p1',
-            name: 'Item',
-            quantity: 1,
-            unitPriceCents: 1000,
-            totalPriceCents: 1000,
-          },
-        ],
-        tenders: [
-          { type: 'CASH', amountCents: 1000, receivedAmountCents: 1000, changeAmountCents: 0 },
-        ],
-        totalCents: 1000,
-        createdAtUtc: new Date().toISOString(),
-      });
+      await offlineDb.enqueueSale(
+        {
+          shiftId: 'shift-1',
+          idempotencyKey: 'pending-sale-preserved-1',
+          items: [
+            {
+              productId: 'p1',
+              name: 'Item',
+              quantity: 1,
+              unitPriceCents: 1000,
+              totalPriceCents: 1000,
+            },
+          ],
+          tenders: [
+            { type: 'CASH', amountCents: 1000, receivedAmountCents: 1000, changeAmountCents: 0 },
+          ],
+          totalCents: 1000,
+          createdAtUtc: new Date().toISOString(),
+        },
+        { tenantId: 'tenant-1', locationId: 'loc-1' }
+      );
 
       // 2. Controlled deferred fetch for sync
       const deferredSync = createDeferred<{

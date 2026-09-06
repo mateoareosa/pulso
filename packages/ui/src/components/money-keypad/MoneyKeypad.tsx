@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Money } from '@pulso/domain';
 import { IconCheck } from '@pulso/icons';
 
 export interface MoneyKeypadProps {
   totalCents: number;
-  onConfirmTender: (data: { receivedCents: number; changeCents: number }) => void;
+  onConfirmTender: (data: { receivedCents: number; changeCents: number }) => Promise<void> | void;
   onCancel: () => void;
   currencySymbol?: string;
+  isSubmitting?: boolean;
 }
 
 export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
@@ -14,10 +15,14 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
   onConfirmTender,
   onCancel,
   currencySymbol = '$',
+  isSubmitting: isSubmittingProp = false,
 }) => {
   const [receivedInput, setReceivedInput] = useState<string>('');
+  const [isSubmittingInternal, setIsSubmittingInternal] = useState(false);
   const isSubmittingRef = React.useRef(false);
   const isCancellingRef = React.useRef(false);
+
+  const isBusy = isSubmittingProp || isSubmittingInternal || isSubmittingRef.current;
 
   const normalizedInput = receivedInput.replace(',', '.');
   const receivedCents = normalizedInput ? Math.round(parseFloat(normalizedInput) * 100) : 0;
@@ -70,6 +75,21 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
     setReceivedInput('');
   };
 
+  const handleConfirm = useCallback(async () => {
+    if (!isSufficient) return;
+    if (isSubmittingRef.current || isSubmittingProp) return;
+    isSubmittingRef.current = true;
+    setIsSubmittingInternal(true);
+    try {
+      await onConfirmTender({ receivedCents, changeCents });
+    } catch {
+      // Suppress unhandled rejections; errors are handled by onConfirmTender/store
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmittingInternal(false);
+    }
+  }, [isSufficient, isSubmittingProp, onConfirmTender, receivedCents, changeCents]);
+
   // Keyboard navigation inside the tender modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -83,14 +103,11 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
         return;
       }
 
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' || e.key === 'NumpadEnter') {
         e.preventDefault();
         e.stopPropagation();
-        if (e.repeat || isSubmittingRef.current) return;
-        if (isSufficient) {
-          isSubmittingRef.current = true;
-          onConfirmTender({ receivedCents, changeCents });
-        }
+        if (e.repeat || isSubmittingRef.current || isSubmittingProp) return;
+        void handleConfirm();
         return;
       }
 
@@ -127,7 +144,7 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSufficient, receivedCents, changeCents, onCancel, onConfirmTender]);
+  }, [onCancel, handleConfirm, isSubmittingProp]);
 
   const handleDigit = (digit: string) => {
     appendDigitOrSeparator(digit);
@@ -398,14 +415,29 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
 
         <button
           type="button"
-          disabled={!isSufficient}
-          onClick={() => onConfirmTender({ receivedCents, changeCents })}
+          disabled={!isSufficient || isBusy}
+          aria-disabled={!isSufficient || isBusy}
+          aria-busy={isBusy}
+          onClick={(e) => {
+            e.preventDefault();
+            void handleConfirm();
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            void handleConfirm();
+          }}
           style={{
             height: '48px',
-            backgroundColor: isSufficient
-              ? 'var(--color-pulse-solid)'
-              : 'var(--color-surface-sunken)',
-            color: isSufficient ? '#0f172a' : 'var(--color-ink-subtle)',
+            backgroundColor: isBusy
+              ? 'var(--color-surface-sunken)'
+              : isSufficient
+                ? 'var(--color-pulse-solid)'
+                : 'var(--color-surface-sunken)',
+            color: isBusy
+              ? 'var(--color-ink-subtle)'
+              : isSufficient
+                ? '#0f172a'
+                : 'var(--color-ink-subtle)',
             border: '2px solid var(--color-ink)',
             fontWeight: 900,
             fontSize: 'var(--text-sm)',
@@ -413,13 +445,13 @@ export const MoneyKeypad: React.FC<MoneyKeypadProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            cursor: isSufficient ? 'pointer' : 'not-allowed',
+            cursor: !isSufficient || isBusy ? 'not-allowed' : 'pointer',
             letterSpacing: '0.5px',
-            boxShadow: isSufficient ? 'var(--shadow-key)' : 'none',
+            boxShadow: isSufficient && !isBusy ? 'var(--shadow-key)' : 'none',
           }}
         >
           <IconCheck size={18} />
-          <span>CONFIRMAR COBRO (ENTER)</span>
+          <span>{isBusy ? 'PROCESANDO COBRO...' : 'CONFIRMAR COBRO (ENTER)'}</span>
         </button>
       </div>
     </div>

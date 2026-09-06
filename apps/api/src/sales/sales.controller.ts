@@ -1,5 +1,17 @@
-import { Controller, Post, Body, HttpCode, UseGuards, Inject } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Query,
+  HttpCode,
+  UseGuards,
+  Inject,
+  BadRequestException,
+} from '@nestjs/common';
 import { SalesService } from './sales.service.js';
+import { QuerySalesSchema } from '@pulso/contracts';
 import { SessionAuthGuard } from '../auth/auth.guard.js';
 import { CurrentSession } from '../auth/current-session.decorator.js';
 import type { SessionContext } from '../auth/cookie.utils.js';
@@ -12,9 +24,25 @@ export class SalesController {
   @Post()
   @HttpCode(200)
   async createSale(@Body() payload: unknown, @CurrentSession() session: SessionContext) {
-    return await this.salesService.processSale(payload, {
-      tenantId: session.tenantId,
-      locationId: session.locationId,
-    });
+    return await this.salesService.processSale(payload, session);
+  }
+
+  @Get()
+  async getSales(@Query() query: unknown, @CurrentSession() session: SessionContext) {
+    const parseResult = QuerySalesSchema.safeParse(query);
+    if (!parseResult.success) {
+      const firstError = parseResult.error.errors[0]?.message;
+      throw new BadRequestException({
+        message: firstError || 'Parámetros de consulta de ventas inválidos',
+        errors: parseResult.error.errors,
+      });
+    }
+
+    return await this.salesService.getSales(session, parseResult.data);
+  }
+
+  @Get(':id')
+  async getSaleById(@Param('id') id: string, @CurrentSession() session: SessionContext) {
+    return await this.salesService.getSaleById(session, id);
   }
 }

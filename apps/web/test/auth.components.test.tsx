@@ -311,18 +311,27 @@ describe('Frontend Authentication Lifecycle & Components', () => {
     ]);
 
     // 4. Populate syncQueue with a pending sale
-    await offlineDb.enqueueSale({
-      shiftId: 'shift-1',
-      idempotencyKey: 'pending-sale-preserve-logout',
-      items: [
-        { productId: 'p1', name: 'Item', quantity: 1, unitPriceCents: 1000, totalPriceCents: 1000 },
-      ],
-      tenders: [
-        { type: 'CASH', amountCents: 1000, receivedAmountCents: 1000, changeAmountCents: 0 },
-      ],
-      totalCents: 1000,
-      createdAtUtc: new Date().toISOString(),
-    });
+    await offlineDb.enqueueSale(
+      {
+        shiftId: 'shift-1',
+        idempotencyKey: 'pending-sale-preserve-logout',
+        items: [
+          {
+            productId: 'p1',
+            name: 'Item',
+            quantity: 1,
+            unitPriceCents: 1000,
+            totalPriceCents: 1000,
+          },
+        ],
+        tenders: [
+          { type: 'CASH', amountCents: 1000, receivedAmountCents: 1000, changeAmountCents: 0 },
+        ],
+        totalCents: 1000,
+        createdAtUtc: new Date().toISOString(),
+      },
+      { tenantId: 'ten_1', locationId: 'loc_1' }
+    );
 
     expect(useCatalogStore.getState().products).toHaveLength(1);
     expect(await offlineDb.getCachedProducts('ten_1', 'loc_1')).toHaveLength(1);

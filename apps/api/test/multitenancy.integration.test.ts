@@ -30,6 +30,7 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
   let tenantBId: string;
   let locationAId: string;
   let locationBId: string;
+  let productAId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -66,6 +67,29 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
     tenantAId = regA.body.tenant.id;
     locationAId = regA.body.location.id;
     cookieTenantA = extractCookieValue(regA.headers);
+
+    // Create a product for Tenant A
+    const prodA = await testPrisma.product.create({
+      data: {
+        tenantId: tenantAId,
+        name: 'Alfajor Alpha',
+        normalizedName: 'alfajor alpha',
+        barcode: '7791234567890',
+        salePriceCents: 100000,
+        costPriceCents: 50000,
+        isActive: true,
+      },
+    });
+    productAId = prodA.id;
+    await testPrisma.productLocation.create({
+      data: {
+        productId: prodA.id,
+        locationId: locationAId,
+        stockQuantity: 10,
+        minimumStock: 2,
+        isAvailable: true,
+      },
+    });
 
     // Register Tenant B
     const regB = await request(app.getHttpServer())
@@ -159,8 +183,8 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
         idempotencyKey: '11111111-1111-4111-a111-111111111111',
         items: [
           {
-            productId: 'prod-1',
-            name: 'Alfajor',
+            productId: productAId,
+            name: 'Alfajor Alpha',
             quantity: 1,
             unitPriceCents: 100000,
             totalPriceCents: 100000,
@@ -194,22 +218,22 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
   });
 
   describe('Sync Batch Multi-Tenant Isolation & Injection Rejection', () => {
-    const validSalePayload = {
+    const getValidSalePayload = () => ({
       shiftId: 'shift-100',
       idempotencyKey: '33333333-3333-4333-a333-333333333333',
       items: [
         {
-          productId: 'prod-001',
-          name: 'Alfajor Triple',
+          productId: productAId,
+          name: 'Alfajor Alpha',
           quantity: 1,
-          unitPriceCents: 150000,
-          totalPriceCents: 150000,
+          unitPriceCents: 100000,
+          totalPriceCents: 100000,
         },
       ],
-      tenders: [{ type: 'CASH', amountCents: 150000 }],
-      totalCents: 150000,
+      tenders: [{ type: 'CASH', amountCents: 100000 }],
+      totalCents: 100000,
       createdAtUtc: new Date().toISOString(),
-    };
+    });
 
     it('rejects sync batch with injected tenantId/locationId at root with 400 Bad Request', async () => {
       await request(app.getHttpServer())
@@ -222,7 +246,7 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
             {
               operationId: '44444444-4444-4444-a444-444444444444',
               type: 'CREATE_SALE',
-              payload: validSalePayload,
+              payload: getValidSalePayload(),
             },
           ],
         })
@@ -240,7 +264,7 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
               operationId: '44444444-4444-4444-a444-444444444444',
               type: 'CREATE_SALE',
               locationId: locationBId,
-              payload: validSalePayload,
+              payload: getValidSalePayload(),
             },
           ],
         })
@@ -258,7 +282,7 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
               operationId: '44444444-4444-4444-a444-444444444444',
               type: 'CREATE_SALE',
               payload: {
-                ...validSalePayload,
+                ...getValidSalePayload(),
                 tenantId: tenantBId,
               },
             },
@@ -277,7 +301,7 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
             {
               operationId: '55555555-5555-4555-a555-555555555555',
               type: 'CREATE_SALE',
-              payload: validSalePayload,
+              payload: getValidSalePayload(),
             },
           ],
         })

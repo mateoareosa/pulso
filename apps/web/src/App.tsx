@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SalesScreen } from './features/sales/components/SalesScreen';
 import { ProductsScreen } from './features/catalog/components/ProductsScreen';
+import { SalesHistoryScreen } from './features/sales/components/SalesHistoryScreen';
 import { OperationalRibbon } from '@pulso/ui';
 import { useSalesStore } from './features/sales/store/sales.store';
 import { useCatalogStore } from './features/catalog/store/catalog.store';
@@ -10,15 +11,22 @@ import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BootstrapScreen } from './features/auth/BootstrapScreen';
 import { NetworkErrorScreen } from './features/auth/NetworkErrorScreen';
-import { IconSale, IconStock } from '@pulso/icons';
+import { IconSale, IconStock, IconHistory } from '@pulso/icons';
 
 const AppContent: React.FC = () => {
   const [theme, setTheme] = useState<'light' | 'night'>('light');
   const [unauthView, setUnauthView] = useState<'login' | 'register'>('login');
-  const [activeTab, setActiveTab] = useState<'pos' | 'products'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'products' | 'history'>('pos');
 
-  const { connectionStatus, pendingSyncCount, toggleConnection, syncPendingSales } =
-    useSalesStore();
+  const {
+    connectionStatus,
+    pendingSyncCount,
+    quarantinedCount,
+    toggleConnection,
+    syncPendingSales,
+    refreshPendingCount,
+    recoverQuarantinedOperations,
+  } = useSalesStore();
   const { status, session, logout, retryBootstrap } = useAuth();
   const { clearCatalog } = useCatalogStore();
 
@@ -30,6 +38,12 @@ const AppContent: React.FC = () => {
     clearCatalog();
     await logout();
   };
+
+  useEffect(() => {
+    if (session?.tenant?.id && session?.location?.id) {
+      refreshPendingCount({ tenantId: session.tenant.id, locationId: session.location.id });
+    }
+  }, [session?.tenant?.id, session?.location?.id, refreshPendingCount]);
 
   // 1. Initial verification check
   if (status === 'INITIAL_CHECK') {
@@ -88,48 +102,73 @@ const AppContent: React.FC = () => {
         shiftLabel={operationalContext}
         operatorName={operatorLabel}
         onToggleConnection={toggleConnection}
-        onSyncClick={syncPendingSales}
+        onSyncClick={() =>
+          syncPendingSales({ tenantId: session.tenant.id, locationId: session.location.id })
+        }
         theme={theme}
         onToggleTheme={toggleTheme}
       >
         <PwaInstallPrompt />
 
-        {/* Navigation Tabs for Owner/Manager */}
-        {canManageCatalog && (
-          <div
-            role="tablist"
-            aria-label="Vistas principales"
+        {/* Navigation Tabs */}
+        <div
+          role="tablist"
+          aria-label="Vistas principales"
+          style={{
+            display: 'flex',
+            gap: '4px',
+            backgroundColor: 'rgba(0,0,0,0.15)',
+            padding: '2px',
+            borderRadius: 'var(--radius-xs)',
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'pos'}
+            onClick={() => setActiveTab('pos')}
             style={{
               display: 'flex',
+              alignItems: 'center',
               gap: '4px',
-              backgroundColor: 'rgba(0,0,0,0.15)',
-              padding: '2px',
+              backgroundColor: activeTab === 'pos' ? 'var(--color-surface)' : 'transparent',
+              color: activeTab === 'pos' ? 'var(--color-ink)' : 'var(--color-ribbon-text)',
+              border: 'none',
               borderRadius: 'var(--radius-xs)',
+              padding: '4px 10px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 800,
+              cursor: 'pointer',
+              minHeight: '28px',
             }}
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'pos'}
-              onClick={() => setActiveTab('pos')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                backgroundColor: activeTab === 'pos' ? 'var(--color-surface)' : 'transparent',
-                color: activeTab === 'pos' ? 'var(--color-ink)' : 'var(--color-ribbon-text)',
-                border: 'none',
-                borderRadius: 'var(--radius-xs)',
-                padding: '4px 10px',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 800,
-                cursor: 'pointer',
-                minHeight: '28px',
-              }}
-            >
-              <IconSale size={14} />
-              <span>MOSTRADOR</span>
-            </button>
+            <IconSale size={14} />
+            <span>MOSTRADOR</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'history'}
+            onClick={() => setActiveTab('history')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              backgroundColor: activeTab === 'history' ? 'var(--color-surface)' : 'transparent',
+              color: activeTab === 'history' ? 'var(--color-ink)' : 'var(--color-ribbon-text)',
+              border: 'none',
+              borderRadius: 'var(--radius-xs)',
+              padding: '4px 10px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 800,
+              cursor: 'pointer',
+              minHeight: '28px',
+            }}
+          >
+            <IconHistory size={14} />
+            <span>HISTORIAL</span>
+          </button>
+          {canManageCatalog && (
             <button
               type="button"
               role="tab"
@@ -153,8 +192,8 @@ const AppContent: React.FC = () => {
               <IconStock size={14} />
               <span>PRODUCTOS</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Accessible Logout Button */}
         <button
@@ -181,9 +220,62 @@ const AppContent: React.FC = () => {
         </button>
       </OperationalRibbon>
 
+      {quarantinedCount > 0 && (
+        <aside
+          role="alert"
+          aria-live="polite"
+          data-testid="legacy-recovery-banner"
+          style={{
+            backgroundColor: '#fff3cd',
+            color: '#856404',
+            borderBottom: '1px solid #ffeeba',
+            padding: '8px 16px',
+            fontSize: 'var(--text-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+          }}
+        >
+          <span>
+            ⚠️ <strong>Operaciones pendientes de recuperación:</strong> Se detectaron{' '}
+            {quarantinedCount} operación(es) offline antiguas sin contexto asignado.
+          </span>
+          <button
+            type="button"
+            onClick={async () => {
+              if (session?.tenant?.id && session?.location?.id) {
+                await recoverQuarantinedOperations({
+                  tenantId: session.tenant.id,
+                  locationId: session.location.id,
+                });
+              }
+            }}
+            style={{
+              backgroundColor: '#856404',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '4px 10px',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '12px',
+            }}
+          >
+            Recuperar para este comercio
+          </button>
+        </aside>
+      )}
+
       {/* Main View Area */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {canManageCatalog && activeTab === 'products' ? <ProductsScreen /> : <SalesScreen />}
+        {activeTab === 'history' ? (
+          <SalesHistoryScreen />
+        ) : canManageCatalog && activeTab === 'products' ? (
+          <ProductsScreen />
+        ) : (
+          <SalesScreen />
+        )}
       </div>
     </div>
   );

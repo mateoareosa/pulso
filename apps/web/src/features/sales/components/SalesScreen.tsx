@@ -14,6 +14,7 @@ export const SalesScreen: React.FC = () => {
     items,
     connectionStatus,
     isTenderOpen,
+    isSubmittingSale,
     lastSaleSuccess,
     errorMessage,
     selectedItemId,
@@ -784,8 +785,22 @@ export const SalesScreen: React.FC = () => {
         >
           <MoneyKeypad
             totalCents={totalCents}
+            isSubmitting={isSubmittingSale}
             onConfirmTender={async ({ receivedCents, changeCents }) => {
-              await processCashPayment(receivedCents, changeCents);
+              if (!session?.tenant?.id || !session?.location?.id) {
+                setErrorMessage('No hay contexto de sucursal activo para procesar la venta.');
+                return;
+              }
+              try {
+                await processCashPayment(receivedCents, changeCents, {
+                  tenantId: session.tenant.id,
+                  locationId: session.location.id,
+                });
+              } catch (err: unknown) {
+                if (err instanceof Error) {
+                  setErrorMessage(err.message);
+                }
+              }
             }}
             onCancel={() => {
               closeTender();
@@ -907,6 +922,39 @@ export const SalesScreen: React.FC = () => {
                 </span>
               </div>
             </div>
+
+            {lastSaleSuccess.warnings && lastSaleSuccess.warnings.length > 0 && (
+              <div
+                style={{
+                  backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                  border: '1px solid #eab308',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '8px 12px',
+                  marginBottom: '16px',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-ink)',
+                  textAlign: 'left',
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    marginBottom: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <IconAlert size={14} />
+                  <span>Aviso de stock:</span>
+                </div>
+                {lastSaleSuccess.warnings.map((w) => (
+                  <div key={w.productId}>
+                    {w.name}: stock {w.currentStock} {w.belowZero ? '(negativo)' : '(bajo mínimo)'}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <button
               type="button"

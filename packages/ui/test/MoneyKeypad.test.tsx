@@ -185,4 +185,139 @@ describe('MoneyKeypad Component', () => {
       expect(keydownAdds).toBe(keydownRemoves);
     });
   });
+
+  describe('Double Submission Prevention & Shared Input Lock', () => {
+    it('rapid double click on Confirm button executes onConfirmTender exactly once', async () => {
+      let resolvePromise: () => void;
+      const slowPromise = new Promise<void>((resolve) => {
+        resolvePromise = resolve;
+      });
+      const onConfirm = vi.fn().mockImplementation(() => slowPromise);
+
+      render(<MoneyKeypad totalCents={10000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
+
+      // Click exact amount
+      fireEvent.click(screen.getByText('EXACTO'));
+
+      const confirmBtn = screen.getByRole('button', { name: /CONFIRMAR COBRO/i });
+
+      // Rapid double click
+      fireEvent.click(confirmBtn);
+      fireEvent.click(confirmBtn);
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+
+      // Button should be disabled and aria-busy
+      expect((confirmBtn as HTMLButtonElement).disabled).toBe(true);
+      expect(confirmBtn.getAttribute('aria-busy')).toBe('true');
+
+      // Resolve
+      await act(async () => {
+        resolvePromise!();
+      });
+    });
+
+    it('double tap (touch) executes onConfirmTender exactly once', async () => {
+      let resolvePromise: () => void;
+      const slowPromise = new Promise<void>((resolve) => {
+        resolvePromise = resolve;
+      });
+      const onConfirm = vi.fn().mockImplementation(() => slowPromise);
+
+      render(<MoneyKeypad totalCents={10000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
+
+      fireEvent.click(screen.getByText('EXACTO'));
+      const confirmBtn = screen.getByRole('button', { name: /CONFIRMAR COBRO/i });
+
+      // Double tap
+      fireEvent.touchEnd(confirmBtn);
+      fireEvent.touchEnd(confirmBtn);
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolvePromise!();
+      });
+    });
+
+    it('repeated Enter / NumpadEnter while pending executes onConfirmTender exactly once', async () => {
+      let resolvePromise: () => void;
+      const slowPromise = new Promise<void>((resolve) => {
+        resolvePromise = resolve;
+      });
+      const onConfirm = vi.fn().mockImplementation(() => slowPromise);
+
+      render(<MoneyKeypad totalCents={10000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
+
+      fireEvent.click(screen.getByText('EXACTO'));
+
+      // Repeated Enter presses
+      fireEvent.keyDown(window, { key: 'Enter' });
+      fireEvent.keyDown(window, { key: 'Enter' });
+      fireEvent.keyDown(window, { key: 'NumpadEnter', code: 'NumpadEnter' });
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolvePromise!();
+      });
+    });
+
+    it('click followed immediately by Enter executes onConfirmTender exactly once', async () => {
+      let resolvePromise: () => void;
+      const slowPromise = new Promise<void>((resolve) => {
+        resolvePromise = resolve;
+      });
+      const onConfirm = vi.fn().mockImplementation(() => slowPromise);
+
+      render(<MoneyKeypad totalCents={10000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
+
+      fireEvent.click(screen.getByText('EXACTO'));
+      const confirmBtn = screen.getByRole('button', { name: /CONFIRMAR COBRO/i });
+
+      // Click then immediately Enter
+      fireEvent.click(confirmBtn);
+      fireEvent.keyDown(window, { key: 'Enter' });
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolvePromise!();
+      });
+    });
+
+    it('releases the lock on error so user can retry', async () => {
+      let rejectPromise: (err: Error) => void;
+      const failingPromise = new Promise<void>((_, reject) => {
+        rejectPromise = reject;
+      });
+      const onConfirm = vi
+        .fn()
+        .mockImplementationOnce(() => failingPromise)
+        .mockImplementationOnce(() => Promise.resolve());
+
+      render(<MoneyKeypad totalCents={10000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
+
+      fireEvent.click(screen.getByText('EXACTO'));
+      const confirmBtn = screen.getByRole('button', { name: /CONFIRMAR COBRO/i });
+
+      // First click: fails
+      fireEvent.click(confirmBtn);
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+      expect((confirmBtn as HTMLButtonElement).disabled).toBe(true);
+
+      // Reject promise
+      await act(async () => {
+        rejectPromise!(new Error('Network failure'));
+      });
+
+      // After rejection, lock is released and button is enabled again
+      expect((confirmBtn as HTMLButtonElement).disabled).toBe(false);
+      expect(confirmBtn.getAttribute('aria-busy')).toBe('false');
+
+      // Retry click: succeeds
+      fireEvent.click(confirmBtn);
+      expect(onConfirm).toHaveBeenCalledTimes(2);
+    });
+  });
 });

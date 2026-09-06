@@ -646,4 +646,157 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
 
     await saveScreenshot(page, 'pwa-instalacion-prompt');
   });
+
+  test('Vertical Slice 3: Persistent Sales, Transactional Stock Decrement, Sales History & Offline Merging', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await registerBusiness(
+      page,
+      'Kiosco Persistencia V3',
+      'Casa Central',
+      'Operador V3',
+      'v3@kiosco.com',
+      'passwordSegura123!',
+      true
+    );
+
+    const ribbon = page.locator('.pulso-ribbon');
+    await expect(ribbon).toBeVisible();
+
+    // 1. Perform online sale of 2 Alfajores
+    const alfajorBtn = page.locator('button:has-text("Alfajor Triple Dulce de Leche")');
+    await alfajorBtn.click();
+    await alfajorBtn.click();
+
+    await page.locator('button:has-text("COBRAR EN EFECTIVO")').click();
+    const tenderModal = page.locator('[role="dialog"][aria-label="Cobro en efectivo"]');
+    await expect(tenderModal).toBeVisible();
+    await tenderModal.locator('button:has-text("EXACTO")').click();
+    await tenderModal.locator('button:has-text("CONFIRMAR COBRO")').click();
+
+    const successSeal = page.locator('[role="status"]:has-text("VENTA CONFIRMADA")');
+    await expect(successSeal).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(successSeal).not.toBeVisible();
+
+    // 2. Navigate to HISTORIAL tab
+    const historyTab = page.locator('button:has-text("HISTORIAL")');
+    await expect(historyTab).toBeVisible();
+    await historyTab.click();
+
+    await expect(page.locator('h1:has-text("Historial de Ventas")')).toBeVisible();
+    const completedBadge = page.locator('span:has-text("COMPLETADA")').first();
+    await expect(completedBadge).toBeVisible();
+    await expect(page.locator('text=$ 2.400,00')).toBeVisible();
+
+    // 3. Open Detail modal
+    const detailBtn = page.locator('button:has-text("DETALLE")').first();
+    await detailBtn.click();
+
+    const detailModal = page.locator('[role="dialog"][aria-label="Detalle de venta"]');
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('Alfajor Triple Dulce de Leche');
+    await expect(detailModal).toContainText('EFECTIVO');
+    await expect(detailModal).toContainText('$ 2.400,00');
+
+    // Close modal via Escape
+    await page.keyboard.press('Escape');
+    await expect(detailModal).not.toBeVisible();
+
+    // 4. Check transactional stock in PRODUCTOS tab
+    const productsTab = page.locator('button:has-text("PRODUCTOS")');
+    await productsTab.click();
+    await expect(page.locator('h1:has-text("Productos e Inventario")')).toBeVisible();
+
+    // 50 initial - 2 sold = 48
+    const table = page.locator('table');
+    await expect(table).toContainText('Alfajor Triple Dulce de Leche');
+    await expect(table).toContainText('48');
+
+    // 5. Offline sale and local pending history
+    const posTab = page.locator('button:has-text("MOSTRADOR")');
+    await posTab.click();
+
+    const connectionBtn = page.locator('button[aria-label*="Estado de conexión"]');
+    await connectionBtn.click();
+    await expect(connectionBtn).toContainText('SIN CONEXIÓN');
+
+    const gaseosaBtn = page.locator('button:has-text("Gaseosa Cola 500ml")');
+    await gaseosaBtn.click();
+    await page.locator('button:has-text("COBRAR EN EFECTIVO")').click();
+    await tenderModal.locator('button:has-text("EXACTO")').click();
+    await tenderModal.locator('button:has-text("CONFIRMAR COBRO")').click();
+
+    const offlineSeal = page.locator('[role="status"]:has-text("VENTA GUARDADA LOCAL")');
+    await expect(offlineSeal).toBeVisible();
+    await page.keyboard.press('Enter');
+
+    // View in HISTORIAL: shows PENDIENTE LOCAL badge
+    await historyTab.click();
+    await expect(page.locator('span:has-text("PENDIENTE LOCAL")').first()).toBeVisible();
+
+    // Reconnect and sync
+    await posTab.click();
+    const pendingBadge = page.locator('button:has-text("1 pendientes")');
+    await pendingBadge.click();
+    await expect(connectionBtn).toContainText('ONLINE');
+
+    // Return to history: now completed
+    await historyTab.click();
+    await expect(page.locator('span:has-text("PENDIENTE LOCAL")')).not.toBeVisible();
+    await expect(page.locator('span:has-text("COMPLETADA")')).toHaveCount(2);
+  });
+
+  test('Vertical Slice 3: Keypad double-submission lock prevents duplicate sales under rapid clicks', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await registerBusiness(
+      page,
+      'Kiosco Lock Concurrente',
+      'Casa Central',
+      'Cajero Lock',
+      'lock@kiosco.com',
+      'passwordSegura123!',
+      true
+    );
+
+    // 1. Add 1 Alfajor
+    const alfajorBtn = page.locator('button:has-text("Alfajor Triple Dulce de Leche")');
+    await alfajorBtn.click();
+
+    // 2. Open Tender
+    await page.locator('button:has-text("COBRAR EN EFECTIVO")').click();
+    const tenderModal = page.locator('[role="dialog"][aria-label="Cobro en efectivo"]');
+    await expect(tenderModal).toBeVisible();
+    await tenderModal.locator('button:has-text("EXACTO")').click();
+
+    // 3. Trigger rapid consecutive clicks on CONFIRMAR COBRO (synchronous double-click)
+    const confirmBtn = tenderModal.locator('button:has-text("CONFIRMAR COBRO")');
+    await confirmBtn.evaluate((btn: HTMLElement) => {
+      btn.click();
+      btn.click();
+    });
+
+    // 4. Verify sale confirmed once
+    const successSeal = page.locator('[role="status"]:has-text("VENTA CONFIRMADA")');
+    await expect(successSeal).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(successSeal).not.toBeVisible();
+
+    // 5. Historial must contain strictly 1 sale, not 2
+    const historyTab = page.locator('button:has-text("HISTORIAL")');
+    await historyTab.click();
+    await expect(page.locator('h1:has-text("Historial de Ventas")')).toBeVisible();
+    await expect(page.locator('span:has-text("COMPLETADA")')).toHaveCount(1);
+    await expect(page.getByText('1 venta', { exact: true })).toBeVisible();
+
+    // 6. Products stock must be 49 (50 initial - 1 sold), proving no double decrement
+    const productsTab = page.locator('button:has-text("PRODUCTOS")');
+    await productsTab.click();
+    const table = page.locator('table');
+    await expect(table).toContainText('Alfajor Triple Dulce de Leche');
+    await expect(table).toContainText('49');
+  });
 });

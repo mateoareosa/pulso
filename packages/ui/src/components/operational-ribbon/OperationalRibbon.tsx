@@ -10,7 +10,7 @@ import {
 } from '@pulso/icons';
 
 export interface OperationalRibbonProps {
-  connectionStatus: 'online' | 'offline' | 'syncing';
+  connectionStatus: 'online' | 'offline' | 'syncing' | 'error';
   pendingSyncCount: number;
   shiftLabel: string;
   operatorName?: string;
@@ -255,7 +255,10 @@ export const OperationalRibbon: React.FC<OperationalRibbonProps> = ({
                     : connectionStatus === 'syncing'
                       ? 'var(--color-amber-soft)'
                       : 'var(--color-tomato-solid)',
-                color: connectionStatus === 'offline' ? '#ffffff' : 'var(--color-ink)',
+                color:
+                  connectionStatus === 'offline' || connectionStatus === 'error'
+                    ? '#ffffff'
+                    : 'var(--color-ink)',
                 border:
                   connectionStatus === 'online'
                     ? '1px solid var(--color-pulse-border)'
@@ -288,6 +291,12 @@ export const OperationalRibbon: React.FC<OperationalRibbonProps> = ({
                 <>
                   <IconWifiOff size={14} />
                   <span>SIN CONEXIÓN</span>
+                </>
+              )}
+              {connectionStatus === 'error' && (
+                <>
+                  <IconAlert size={14} />
+                  <span>ERROR SYNC</span>
                 </>
               )}
             </button>
