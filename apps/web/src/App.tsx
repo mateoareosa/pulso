@@ -2,21 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { SalesScreen } from './features/sales/components/SalesScreen';
 import { ProductsScreen } from './features/catalog/components/ProductsScreen';
 import { SalesHistoryScreen } from './features/sales/components/SalesHistoryScreen';
+import { CashScreen } from './features/cash/components/CashScreen';
 import { OperationalRibbon } from '@pulso/ui';
 import { useSalesStore } from './features/sales/store/sales.store';
 import { useCatalogStore } from './features/catalog/store/catalog.store';
+import { useCashStore } from './features/cash/store/cash.store';
 import { PwaInstallPrompt } from './features/pwa/PwaInstallPrompt';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BootstrapScreen } from './features/auth/BootstrapScreen';
 import { NetworkErrorScreen } from './features/auth/NetworkErrorScreen';
-import { IconSale, IconStock, IconHistory } from '@pulso/icons';
+import { IconSale, IconCash, IconStock, IconHistory } from '@pulso/icons';
 
 const AppContent: React.FC = () => {
   const [theme, setTheme] = useState<'light' | 'night'>('light');
   const [unauthView, setUnauthView] = useState<'login' | 'register'>('login');
-  const [activeTab, setActiveTab] = useState<'pos' | 'products' | 'history'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'cash' | 'products' | 'history'>('pos');
 
   const {
     connectionStatus,
@@ -39,11 +41,14 @@ const AppContent: React.FC = () => {
     await logout();
   };
 
+  const { activeShift, loadActiveShift } = useCashStore();
+
   useEffect(() => {
     if (session?.tenant?.id && session?.location?.id) {
       refreshPendingCount({ tenantId: session.tenant.id, locationId: session.location.id });
+      loadActiveShift({ tenantId: session.tenant.id, locationId: session.location.id });
     }
-  }, [session?.tenant?.id, session?.location?.id, refreshPendingCount]);
+  }, [session?.tenant?.id, session?.location?.id, refreshPendingCount, loadActiveShift]);
 
   // 1. Initial verification check
   if (status === 'INITIAL_CHECK') {
@@ -80,7 +85,10 @@ const AppContent: React.FC = () => {
   const roleTranslated =
     session.role === 'OWNER' ? 'Propietario' : session.role === 'MANAGER' ? 'Encargado' : 'Cajero';
 
-  const operationalContext = `${session.tenant.name} · ${session.location.name} · Sin turno abierto`;
+  const shiftSuffix = activeShift
+    ? `Turno #${activeShift.id.slice(-4)} (${activeShift.status === 'OPEN' ? 'Abierto' : 'Cerrado'})`
+    : 'Sin turno abierto';
+  const operationalContext = `${session.tenant.name} · ${session.location.name} · ${shiftSuffix}`;
   const operatorLabel = `${session.user.name} (${roleTranslated})`;
   const canManageCatalog = session.role === 'OWNER' || session.role === 'MANAGER';
 
@@ -125,6 +133,7 @@ const AppContent: React.FC = () => {
           <button
             type="button"
             role="tab"
+            data-testid="nav-tab-pos"
             aria-selected={activeTab === 'pos'}
             onClick={() => setActiveTab('pos')}
             style={{
@@ -148,6 +157,31 @@ const AppContent: React.FC = () => {
           <button
             type="button"
             role="tab"
+            data-testid="nav-tab-cash"
+            aria-selected={activeTab === 'cash'}
+            onClick={() => setActiveTab('cash')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              backgroundColor: activeTab === 'cash' ? 'var(--color-surface)' : 'transparent',
+              color: activeTab === 'cash' ? 'var(--color-ink)' : 'var(--color-ribbon-text)',
+              border: 'none',
+              borderRadius: 'var(--radius-xs)',
+              padding: '4px 10px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 800,
+              cursor: 'pointer',
+              minHeight: '28px',
+            }}
+          >
+            <IconCash size={14} />
+            <span>CAJA</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            data-testid="nav-tab-history"
             aria-selected={activeTab === 'history'}
             onClick={() => setActiveTab('history')}
             style={{
@@ -172,6 +206,7 @@ const AppContent: React.FC = () => {
             <button
               type="button"
               role="tab"
+              data-testid="nav-tab-products"
               aria-selected={activeTab === 'products'}
               onClick={() => setActiveTab('products')}
               style={{
@@ -269,7 +304,9 @@ const AppContent: React.FC = () => {
 
       {/* Main View Area */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {activeTab === 'history' ? (
+        {activeTab === 'cash' ? (
+          <CashScreen />
+        ) : activeTab === 'history' ? (
           <SalesHistoryScreen />
         ) : canManageCatalog && activeTab === 'products' ? (
           <ProductsScreen />

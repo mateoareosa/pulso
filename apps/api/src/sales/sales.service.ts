@@ -143,6 +143,21 @@ export class SalesService {
               };
             }
 
+            // Verify an open cash shift exists for this location
+            const activeShift = await tx.cashShift.findFirst({
+              where: {
+                tenantId,
+                locationId,
+                status: 'OPEN',
+              },
+            });
+
+            if (!activeShift) {
+              throw new BadRequestException(
+                'No hay un turno de caja abierto en esta sucursal. Debe abrir caja antes de registrar ventas.'
+              );
+            }
+
             // Fetch products ensuring they belong to current tenant
             const products = await tx.product.findMany({
               where: {
@@ -352,6 +367,35 @@ export class SalesService {
                   resultingStock: deltaInfo.resulting,
                   reason: `Venta ${createdSale.id}`,
                   userId,
+                },
+              });
+            }
+
+            // Touch shift to serialize with concurrent closes and ensure row-level conflict detection
+            await tx.cashShift.update({
+              where: { id: activeShift.id },
+              data: { updatedAt: new Date() },
+            });
+
+            // Create CashMovement of type SALE if cash was tendered
+            const cashAmount = tenders
+              .filter((t) => t.type === 'CASH')
+              .reduce((sum, t) => sum + t.amountCents, 0);
+
+            if (cashAmount > 0) {
+              await tx.cashMovement.create({
+                data: {
+                  tenantId,
+                  locationId,
+                  shiftId: activeShift.id,
+                  createdByUserId: userId,
+                  type: 'SALE',
+                  amountCents: cashAmount,
+                  signedAmountCents: cashAmount,
+                  reason: `Venta ${createdSale.id}`,
+                  saleId: createdSale.id,
+                  idempotencyKey: `sale-${idempotencyKey}`,
+                  createdAtUtc: new Date(createdAtUtc),
                 },
               });
             }

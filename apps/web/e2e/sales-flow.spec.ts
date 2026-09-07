@@ -28,8 +28,8 @@ async function saveScreenshot(page: Page, name: string) {
   await page.screenshot({ path: localPath, fullPage: true });
 }
 
-async function seedDemoProducts(page: Page) {
-  await page.evaluate(async () => {
+async function seedDemoProducts(page: Page, openShift = true) {
+  await page.evaluate(async (openShift) => {
     // 1. Create categories
     const catRes1 = await fetch('/api/categories', {
       method: 'POST',
@@ -151,11 +151,36 @@ async function seedDemoProducts(page: Page) {
         body: JSON.stringify(item),
       });
     }
-  });
+
+    if (openShift) {
+      await fetch('/api/cash/shifts/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          openingAmountCents: 1000000,
+          idempotencyKey: '00000000-0000-4000-8000-000000000099',
+        }),
+      });
+    }
+  }, openShift);
 
   await page.reload();
   await expect(page.locator('.pulso-ribbon')).toBeVisible();
   await expect(page.locator('button:has-text("Alfajor Triple Dulce de Leche")')).toBeVisible();
+}
+
+async function openCashShiftViaApi(page: Page, openingAmountCents = 1000000) {
+  await page.evaluate(async (cents) => {
+    await fetch('/api/cash/shifts/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        openingAmountCents: cents,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    });
+  }, openingAmountCents);
+  await page.reload();
 }
 
 async function registerBusiness(
@@ -165,7 +190,8 @@ async function registerBusiness(
   ownerName = 'Operador Mostrador',
   email = 'operador@kiosco.com',
   password = 'passwordSegura123!',
-  seedProducts = false
+  seedProducts = false,
+  openShift = true
 ) {
   await page.goto('/');
 
@@ -193,7 +219,7 @@ async function registerBusiness(
   await expect(ribbon).toContainText(businessName);
 
   if (seedProducts) {
-    await seedDemoProducts(page);
+    await seedDemoProducts(page, openShift);
   }
 }
 
@@ -227,7 +253,7 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
     await page.goto('/');
     await expect(page.locator('h1:has-text("Acceso a Mostrador")')).toBeVisible();
 
-    // 2. Register initial business
+    // 2. Register initial business without open shift to verify initial closed state
     await registerBusiness(
       page,
       'Kiosco El Trébol',
@@ -235,7 +261,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
       'Operador Mostrador',
       'operador@kiosco.com',
       'passwordSegura123!',
-      true
+      true,
+      false
     );
 
     const ribbon = page.locator('.pulso-ribbon');
@@ -253,7 +280,8 @@ test.describe('Vertical Slice 1 — Auth, Identity, Tenancy & Operational POS E2
     await expect(ribbon).toContainText('Kiosco El Trébol');
     await expect(ribbon).toContainText('Casa Central');
 
-    // 5. Perform authenticated demo sale
+    // 5. Open shift and perform authenticated demo sale
+    await openCashShiftViaApi(page);
     const productBtn = page.locator('button:has-text("Agua Mineral 500ml")');
     await productBtn.click();
     await page.locator('button:has-text("COBRAR EN EFECTIVO")').click();

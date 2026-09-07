@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSalesStore } from '../store/sales.store';
 import { useCatalogStore, CatalogProductItem } from '../../catalog/store/catalog.store';
+import { useCashStore } from '../../cash/store/cash.store';
 import { useOptionalAuth } from '../../auth/AuthContext';
 import { normalizeSearchText } from '../../sync/offline-db';
 import { LiveReceipt, MoneyKeypad } from '@pulso/ui';
@@ -39,6 +40,8 @@ export const SalesScreen: React.FC = () => {
     loadPosCatalog,
     searchPosProducts,
   } = useCatalogStore();
+
+  const { activeShift, loadActiveShift } = useCashStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -201,6 +204,12 @@ export const SalesScreen: React.FC = () => {
       if (e.key === 'F4') {
         e.preventDefault();
         if (items.length > 0 && !lastSaleSuccess) {
+          if (!activeShift) {
+            setErrorMessage(
+              'No hay un turno de caja abierto en esta sucursal. Vaya a la sección CAJA para abrir turno antes de registrar cobros.'
+            );
+            return;
+          }
           openTender();
         }
         return;
@@ -249,6 +258,8 @@ export const SalesScreen: React.FC = () => {
     openTender,
     dismissSuccess,
     addItem,
+    activeShift,
+    setErrorMessage,
   ]);
 
   // Handle Search / Barcode Form Submit
@@ -734,7 +745,16 @@ export const SalesScreen: React.FC = () => {
         <button
           type="button"
           disabled={items.length === 0}
-          onClick={openTender}
+          onClick={() => {
+            if (items.length === 0) return;
+            if (!activeShift) {
+              setErrorMessage(
+                'No hay un turno de caja abierto en esta sucursal. Vaya a la sección CAJA para abrir turno antes de registrar cobros.'
+              );
+              return;
+            }
+            openTender();
+          }}
           style={{
             height: '56px',
             backgroundColor:
@@ -791,8 +811,19 @@ export const SalesScreen: React.FC = () => {
                 setErrorMessage('No hay contexto de sucursal activo para procesar la venta.');
                 return;
               }
+              if (!activeShift) {
+                setErrorMessage(
+                  'No hay un turno de caja abierto en esta sucursal. Vaya a la sección CAJA para abrir turno antes de registrar cobros.'
+                );
+                return;
+              }
               try {
                 await processCashPayment(receivedCents, changeCents, {
+                  tenantId: session.tenant.id,
+                  locationId: session.location.id,
+                  shiftId: activeShift.id,
+                });
+                await loadActiveShift({
                   tenantId: session.tenant.id,
                   locationId: session.location.id,
                 });

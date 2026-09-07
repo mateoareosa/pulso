@@ -31,6 +31,19 @@ enum InventoryMovementType {
   SALE
 }
 
+enum CashShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  OPENING
+  SALE
+  CASH_IN
+  CASH_OUT
+  CLOSING
+}
+
 model User {
   id                 String              @id @default(cuid())
   email              String
@@ -44,6 +57,9 @@ model User {
   sessions           Session[]
   inventoryMovements InventoryMovement[]
   sales              Sale[]
+  openedShifts       CashShift[]         @relation("ShiftOpenedBy")
+  closedShifts       CashShift[]         @relation("ShiftClosedBy")
+  cashMovements      CashMovement[]
 
   @@map("users")
 }
@@ -61,6 +77,8 @@ model Tenant {
   products           Product[]
   inventoryMovements InventoryMovement[]
   sales              Sale[]
+  cashShifts         CashShift[]
+  cashMovements      CashMovement[]
 
   @@map("tenants")
 }
@@ -96,6 +114,8 @@ model Location {
   productLocations   ProductLocation[]
   inventoryMovements InventoryMovement[]
   sales              Sale[]
+  cashShifts         CashShift[]
+  cashMovements      CashMovement[]
 
   @@index([tenantId])
   @@map("locations")
@@ -227,9 +247,11 @@ model Sale {
   items              SaleItem[]
   tenders            SaleTender[]
   inventoryMovements InventoryMovement[]
+  cashMovements      CashMovement[]
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, locationId, createdAtUtc])
+  @@index([shiftId])
   @@map("sales")
 }
 
@@ -262,4 +284,59 @@ model SaleTender {
 
   @@index([saleId])
   @@map("sale_tenders")
+}
+
+model CashShift {
+  id                    String            @id @default(cuid())
+  tenantId              String
+  locationId            String
+  openedByUserId        String
+  closedByUserId        String?
+  status                CashShiftStatus   @default(OPEN)
+  openingAmountCents    Int
+  expectedAmountCents   Int?
+  countedAmountCents    Int?
+  differenceAmountCents Int?
+  openedAtUtc           DateTime
+  closedAtUtc           DateTime?
+  version               Int               @default(1)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location              Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  openedByUser          User              @relation("ShiftOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  closedByUser          User?             @relation("ShiftClosedBy", fields: [closedByUserId], references: [id], onDelete: Restrict)
+  movements             CashMovement[]
+
+  @@index([tenantId, locationId, status])
+  @@index([tenantId, locationId, openedAtUtc])
+  @@map("cash_shifts")
+}
+
+model CashMovement {
+  id                String            @id @default(cuid())
+  tenantId          String
+  locationId        String
+  shiftId           String
+  createdByUserId   String
+  type              CashMovementType
+  amountCents       Int
+  signedAmountCents Int
+  reason            String?
+  saleId            String?
+  idempotencyKey    String
+  createdAtUtc      DateTime          @default(now())
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location          Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  shift             CashShift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  createdByUser     User              @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  sale              Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, locationId, shiftId, createdAtUtc])
+  @@index([shiftId])
+  @@index([saleId])
+  @@map("cash_movements")
 }

@@ -88,6 +88,18 @@ describe('SalesService transactional sales processor', () => {
       location: { id: locationId, name: 'Sucursal Principal' },
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
     };
+
+    await testPrisma.cashShift.create({
+      data: {
+        id: 'shift-1',
+        tenantId,
+        locationId,
+        openedByUserId: userId,
+        status: 'OPEN',
+        openingAmountCents: 100000,
+        openedAtUtc: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {

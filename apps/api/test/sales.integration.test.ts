@@ -143,6 +143,26 @@ describe('Sales & Stock Integration Suite (PostgreSQL Real)', () => {
       });
     expect(pB.status).toBe(201);
     productB1Id = pB.body.id;
+
+    // Open shift in Tenant A so POS sales are permitted
+    const shiftRes = await request(app.getHttpServer())
+      .post('/api/cash/shifts/open')
+      .set('Cookie', cashierCookieA)
+      .send({
+        openingAmountCents: 100000,
+        idempotencyKey: '00000000-0000-4000-8000-0000000000aa',
+      });
+    expect(shiftRes.status).toBe(200);
+
+    // Open shift in Tenant B so POS sales are permitted
+    const shiftResB = await request(app.getHttpServer())
+      .post('/api/cash/shifts/open')
+      .set('Cookie', ownerCookieB)
+      .send({
+        openingAmountCents: 100000,
+        idempotencyKey: '00000000-0000-4000-8000-0000000000bb',
+      });
+    expect(shiftResB.status).toBe(200);
   });
 
   describe('POST /api/sales - Transactional persistence & stock', () => {

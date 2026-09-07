@@ -24,7 +24,7 @@ describe('MoneyKeypad Component', () => {
     expect(screen.getByText('Vuelto')).toBeDefined();
   });
 
-  it('allows clicking exact amount and confirming', () => {
+  it('allows clicking exact amount and confirming', async () => {
     const onConfirm = vi.fn();
     render(<MoneyKeypad totalCents={150000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
 
@@ -34,7 +34,9 @@ describe('MoneyKeypad Component', () => {
 
     // Confirm button
     const confirmBtn = screen.getByText(/CONFIRMAR COBRO/i);
-    fireEvent.click(confirmBtn);
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
 
     expect(onConfirm).toHaveBeenCalledWith({
       receivedCents: 150000,
@@ -93,7 +95,7 @@ describe('MoneyKeypad Component', () => {
       expect(screen.getByText(/10.55|10,55/)).toBeDefined();
     });
 
-    it('confirms on Enter when received amount is sufficient, and prevents double confirmation on repeat', () => {
+    it('confirms on Enter when received amount is sufficient, and prevents double confirmation on repeat', async () => {
       const onConfirm = vi.fn();
       render(<MoneyKeypad totalCents={100000} onConfirmTender={onConfirm} onCancel={vi.fn()} />);
 
@@ -104,7 +106,9 @@ describe('MoneyKeypad Component', () => {
       fireEvent.keyDown(window, { key: '0' });
 
       // Press Enter
-      fireEvent.keyDown(window, { key: 'Enter' });
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 'Enter' });
+      });
       expect(onConfirm).toHaveBeenCalledTimes(1);
       expect(onConfirm).toHaveBeenCalledWith({
         receivedCents: 200000,
@@ -112,7 +116,9 @@ describe('MoneyKeypad Component', () => {
       });
 
       // Key repeat on Enter should not trigger extra confirmation
-      fireEvent.keyDown(window, { key: 'Enter', repeat: true });
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 'Enter', repeat: true });
+      });
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
 
@@ -316,7 +322,9 @@ describe('MoneyKeypad Component', () => {
       expect(confirmBtn.getAttribute('aria-busy')).toBe('false');
 
       // Retry click: succeeds
-      fireEvent.click(confirmBtn);
+      await act(async () => {
+        fireEvent.click(confirmBtn);
+      });
       expect(onConfirm).toHaveBeenCalledTimes(2);
     });
   });

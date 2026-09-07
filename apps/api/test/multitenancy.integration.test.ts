@@ -106,6 +106,25 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
     tenantBId = regB.body.tenant.id;
     locationBId = regB.body.location.id;
     cookieTenantB = extractCookieValue(regB.headers);
+
+    // Open shift in Tenant A and Tenant B
+    await request(app.getHttpServer())
+      .post('/api/cash/shifts/open')
+      .set('Cookie', [cookieTenantA])
+      .send({
+        openingAmountCents: 100000,
+        idempotencyKey: '00000000-0000-4000-8000-0000000000a1',
+      })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/api/cash/shifts/open')
+      .set('Cookie', [cookieTenantB])
+      .send({
+        openingAmountCents: 100000,
+        idempotencyKey: '00000000-0000-4000-8000-0000000000b1',
+      })
+      .expect(200);
   });
 
   describe('Locations Multi-Tenant Isolation', () => {

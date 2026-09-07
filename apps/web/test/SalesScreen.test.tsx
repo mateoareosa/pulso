@@ -3,7 +3,9 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { SalesScreen } from '../src/features/sales/components/SalesScreen';
 import { useSalesStore } from '../src/features/sales/store/sales.store';
 import { useCatalogStore, CatalogProductItem } from '../src/features/catalog/store/catalog.store';
+import { useCashStore } from '../src/features/cash/store/cash.store';
 import { AuthContext } from '../src/features/auth/AuthContext';
+import { salesApi } from '../src/features/sales/services/sales-api';
 
 const DEMO_PRODUCTS: CatalogProductItem[] = [
   {
@@ -147,6 +149,37 @@ describe('SalesScreen Operational Flow', () => {
       total: DEMO_PRODUCTS.length,
       isLoading: false,
       error: null,
+      loadPosCatalog: vi.fn().mockResolvedValue(undefined),
+    });
+
+    useCashStore.setState({
+      activeShift: {
+        id: 'shift-mock-1',
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+        openedByUserId: 'u-1',
+        status: 'OPEN',
+        openingAmountCents: 1000000,
+        expectedAmountCents: 1000000,
+        countedAmountCents: null,
+        differenceAmountCents: null,
+        openedAtUtc: new Date().toISOString(),
+        closedAtUtc: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        summary: {
+          openingAmountCents: 1000000,
+          cashSalesAmountCents: 0,
+          cashInAmountCents: 0,
+          cashOutAmountCents: 0,
+          expectedAmountCents: 1000000,
+          movementsCount: 1,
+          salesCount: 0,
+        },
+      },
+      isLoadingActive: false,
+      error: null,
+      loadActiveShift: vi.fn().mockResolvedValue(undefined),
     });
   });
 
@@ -187,6 +220,47 @@ describe('SalesScreen Operational Flow', () => {
 
     expect(screen.getByText('TOTAL A COBRAR')).toBeDefined();
     expect(screen.getByText('Efectivo Recibido')).toBeDefined();
+  });
+
+  it('blocks cash tender and shows warning without clearing cart when no shift is open (button click)', () => {
+    useCashStore.setState({ activeShift: null });
+    render(<SalesScreen />);
+
+    // Add product
+    const productButton = screen.getByText('Gaseosa Cola 500ml');
+    fireEvent.click(productButton);
+    expect(useSalesStore.getState().items.length).toBe(1);
+
+    // Click Cobrar
+    const cobrarBtn = screen.getByText(/COBRAR EN EFECTIVO/i);
+    fireEvent.click(cobrarBtn);
+
+    // Must NOT open modal
+    expect(screen.queryByText('TOTAL A COBRAR')).toBeNull();
+    // Must show warning
+    expect(useSalesStore.getState().errorMessage).toContain('No hay un turno de caja abierto');
+    // Must preserve cart
+    expect(useSalesStore.getState().items.length).toBe(1);
+  });
+
+  it('blocks cash tender and shows warning without clearing cart when no shift is open (F4 hotkey)', () => {
+    useCashStore.setState({ activeShift: null });
+    render(<SalesScreen />);
+
+    // Add product
+    const productButton = screen.getByText('Gaseosa Cola 500ml');
+    fireEvent.click(productButton);
+    expect(useSalesStore.getState().items.length).toBe(1);
+
+    // Press F4
+    fireEvent.keyDown(window, { key: 'F4' });
+
+    // Must NOT open modal
+    expect(screen.queryByText('TOTAL A COBRAR')).toBeNull();
+    // Must show warning
+    expect(useSalesStore.getState().errorMessage).toContain('No hay un turno de caja abierto');
+    // Must preserve cart
+    expect(useSalesStore.getState().items.length).toBe(1);
   });
 
   describe('Dynamic Product Search & Filtering', () => {
@@ -378,6 +452,25 @@ describe('SalesScreen Operational Flow', () => {
 
   describe('Post-sale Success Screen Confirmation', () => {
     it('dismisses success and starts new sale with Enter key', async () => {
+      const saleSpy = vi.spyOn(salesApi, 'createSale').mockResolvedValue({
+        success: true,
+        sale: {
+          id: 'sale-mock-1',
+          tenantId: 'tenant-1',
+          locationId: 'loc-1',
+          userId: 'u-1',
+          status: 'COMPLETED',
+          totalCents: 45000,
+          idempotencyKey: '00000000-0000-0000-0000-000000000001',
+          items: [],
+          tenders: [],
+          createdAtUtc: new Date().toISOString(),
+          persistedAt: new Date().toISOString(),
+        },
+        idempotentReplay: false,
+        warnings: [],
+      });
+
       render(
         <AuthContext.Provider value={defaultMockAuthContext}>
           <SalesScreen />
@@ -408,9 +501,30 @@ describe('SalesScreen Operational Flow', () => {
       expect(useSalesStore.getState().lastSaleSuccess).toBeNull();
       expect(screen.queryByText(/VENTA CONFIRMADA/i)).toBeNull();
       expect(screen.getByText('Esperando productos...')).toBeDefined();
+
+      saleSpy.mockRestore();
     });
 
     it('dismisses success and starts new sale with Escape key', async () => {
+      const saleSpy = vi.spyOn(salesApi, 'createSale').mockResolvedValue({
+        success: true,
+        sale: {
+          id: 'sale-mock-2',
+          tenantId: 'tenant-1',
+          locationId: 'loc-1',
+          userId: 'u-1',
+          status: 'COMPLETED',
+          totalCents: 45000,
+          idempotencyKey: '00000000-0000-0000-0000-000000000002',
+          items: [],
+          tenders: [],
+          createdAtUtc: new Date().toISOString(),
+          persistedAt: new Date().toISOString(),
+        },
+        idempotentReplay: false,
+        warnings: [],
+      });
+
       render(
         <AuthContext.Provider value={defaultMockAuthContext}>
           <SalesScreen />
@@ -437,6 +551,8 @@ describe('SalesScreen Operational Flow', () => {
 
       expect(useSalesStore.getState().lastSaleSuccess).toBeNull();
       expect(screen.queryByText(/VENTA CONFIRMADA/i)).toBeNull();
+
+      saleSpy.mockRestore();
     });
   });
 

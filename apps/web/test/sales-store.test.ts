@@ -241,6 +241,7 @@ describe('useSalesStore - Persistence, Offline Sync & Sales History', () => {
 
   it('falls back to offline queue on real NetworkError, but rejects and never enqueues on HTTP 4xx ApiError', async () => {
     // 1. NetworkError fallback test
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(salesApi, 'createSale').mockRejectedValueOnce(new NetworkError('No se pudo conectar'));
 
     useSalesStore.getState().addItem({
@@ -257,6 +258,11 @@ describe('useSalesStore - Persistence, Offline Sync & Sales History', () => {
     // Enqueued offline
     expect(useSalesStore.getState().lastSaleSuccess?.isOffline).toBe(true);
     expect(await offlineDb.getPendingCount('tenant-1', 'loc-1')).toBe(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Network failure during online sale submission'),
+      expect.any(Error)
+    );
+    warnSpy.mockRestore();
 
     // 2. ApiError (HTTP 400 Bad Request) test
     await offlineDb.clearAll();

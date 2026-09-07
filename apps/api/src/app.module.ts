@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { SalesModule } from './sales/sales.module.js';
 import { SyncModule } from './sync/sync.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { CashModule } from './cash/cash.module.js';
 import { TestResetModule } from './test-utils/test-reset.module.js';
 
 import { APP_GUARD } from '@nestjs/core';
@@ -21,6 +22,7 @@ const dynamicImports = [
   SalesModule,
   SyncModule,
   CatalogModule,
+  CashModule,
   ...(process.env.NODE_ENV === 'test' ? [TestResetModule] : []),
 ];
 
