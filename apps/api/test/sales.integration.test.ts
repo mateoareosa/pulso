@@ -75,12 +75,15 @@ describe('Sales & Stock Integration Suite (PostgreSQL Real)', () => {
         passwordHash: await hashPassword('CashierPass123!'),
       },
     });
-    await testPrisma.tenantMembership.create({
+    const cashierMembership = await testPrisma.tenantMembership.create({
       data: {
         tenantId: tenantAId,
         userId: cashierUser.id,
         role: 'CASHIER',
       },
+    });
+    await testPrisma.membershipLocation.create({
+      data: { tenantId: tenantAId, membershipId: cashierMembership.id, locationId: locationAId },
     });
     const cashierLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
       email: 'cajero.a@pulso.dev',
@@ -1818,6 +1821,220 @@ describe('Sales & Stock Integration Suite (PostgreSQL Real)', () => {
           ],
         });
       expect(resRef.status).toBe(409);
+    });
+  });
+
+  describe('POST /api/sales/:id/returns|void - append-only adjustments', () => {
+    const sell = async (key: string, quantity = 2, tender = 'CASH') => {
+      const response = await request(app.getHttpServer())
+        .post('/api/sales')
+        .set('Cookie', ownerCookieA)
+        .send({
+          idempotencyKey: key,
+          items: [
+            {
+              productId: productA1Id,
+              name: 'Coca Cola 500ml',
+              barcode: '7791234567890',
+              quantity,
+              unitPriceCents: 150000,
+              totalPriceCents: quantity * 150000,
+            },
+          ],
+          tenders: [{ type: tender, amountCents: quantity * 150000 }],
+          totalCents: quantity * 150000,
+          createdAtUtc: new Date().toISOString(),
+        });
+      expect(response.status).toBe(200);
+      return response.body.sale;
+    };
+
+    it('returns one line atomically, restores stock, refunds cash, and safely replays', async () => {
+      const sale = await sell('91000000-0000-4000-8000-000000000001');
+      const command = {
+        idempotencyKey: '92000000-0000-4000-8000-000000000001',
+        reason: 'Envase dañado',
+        items: [{ saleItemId: sale.items[0].id, quantity: 1 }],
+        refundTender: 'CASH',
+      };
+
+      const first = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/returns`)
+        .set('Cookie', ownerCookieA)
+        .send(command);
+      const replay = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/returns`)
+        .set('Cookie', ownerCookieA)
+        .send(command);
+
+      expect(first.status).toBe(200);
+      expect(first.body.adjustment).toMatchObject({ type: 'RETURN', totalCents: 150000 });
+      expect(replay.status).toBe(200);
+      expect(replay.body.idempotentReplay).toBe(true);
+      expect(await testPrisma.saleAdjustment.count({ where: { saleId: sale.id } })).toBe(1);
+      expect(
+        await testPrisma.inventoryMovement.count({
+          where: { saleId: sale.id, type: 'RETURN' },
+        })
+      ).toBe(1);
+      expect(
+        await testPrisma.cashMovement.count({ where: { saleId: sale.id, type: 'REFUND' } })
+      ).toBe(1);
+      const stock = await testPrisma.productLocation.findUniqueOrThrow({
+        where: { productId_locationId: { productId: productA1Id, locationId: locationAId } },
+      });
+      expect(stock.stockQuantity.toString()).toBe('9');
+      const activeShift = await request(app.getHttpServer())
+        .get('/api/cash/active')
+        .set('Cookie', ownerCookieA);
+      expect(activeShift.status).toBe(200);
+      expect(activeShift.body.summary).toMatchObject({
+        cashSalesAmountCents: 300000,
+        refundAmountCents: 150000,
+        expectedAmountCents: 250000,
+      });
+    });
+
+    it('voids an untouched sale in full and rejects a cashier without side effects', async () => {
+      const sale = await sell('91000000-0000-4000-8000-000000000002');
+      const command = {
+        idempotencyKey: '92000000-0000-4000-8000-000000000002',
+        reason: 'Venta duplicada',
+      };
+
+      const forbidden = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/void`)
+        .set('Cookie', cashierCookieA)
+        .send(command);
+      expect(forbidden.status).toBe(403);
+      expect(await testPrisma.saleAdjustment.count({ where: { saleId: sale.id } })).toBe(0);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/void`)
+        .set('Cookie', ownerCookieA)
+        .send(command);
+      expect(response.status).toBe(200);
+      expect(response.body.adjustment).toMatchObject({ type: 'VOID', totalCents: 300000 });
+      expect(response.body.sale.status).toBe('COMPLETED');
+      expect(response.body.sale.adjustments).toHaveLength(1);
+    });
+
+    it('records a non-cash void as pending manual settlement without a cash movement or open shift', async () => {
+      const sale = await sell('91000000-0000-4000-8000-000000000008', 1, 'DEBIT');
+      await testPrisma.cashShift.updateMany({
+        where: { tenantId: tenantAId, locationId: locationAId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/void`)
+        .set('Cookie', ownerCookieA)
+        .send({
+          idempotencyKey: '92000000-0000-4000-8000-000000000008',
+          reason: 'Venta duplicada con débito',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.adjustment).toMatchObject({
+        type: 'VOID',
+        status: 'PENDING',
+        refundTender: 'DEBIT',
+        refundStatus: 'PENDING',
+      });
+      expect(
+        await testPrisma.cashMovement.count({ where: { saleId: sale.id, type: 'REFUND' } })
+      ).toBe(0);
+      expect(
+        await testPrisma.inventoryMovement.count({ where: { saleId: sale.id, type: 'RETURN' } })
+      ).toBe(1);
+    });
+
+    it('rejects an excessive return and a void after a prior return without extra ledger rows', async () => {
+      const sale = await sell('91000000-0000-4000-8000-000000000003', 1);
+      const excessive = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/returns`)
+        .set('Cookie', ownerCookieA)
+        .send({
+          idempotencyKey: '92000000-0000-4000-8000-000000000003',
+          reason: 'Error de cantidad',
+          items: [{ saleItemId: sale.items[0].id, quantity: 2 }],
+        });
+      expect(excessive.status).toBe(400);
+      expect(excessive.body.code).toBe('RETURN_QUANTITY_EXCEEDED');
+
+      await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/returns`)
+        .set('Cookie', ownerCookieA)
+        .send({
+          idempotencyKey: '92000000-0000-4000-8000-000000000004',
+          reason: 'Devolución total',
+          items: [{ saleItemId: sale.items[0].id, quantity: 1 }],
+        })
+        .expect(200);
+      const voided = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/void`)
+        .set('Cookie', ownerCookieA)
+        .send({
+          idempotencyKey: '92000000-0000-4000-8000-000000000005',
+          reason: 'Intento posterior',
+        });
+      expect(voided.status).toBe(409);
+      expect(voided.body.code).toBe('VOID_AFTER_RETURN');
+      expect(await testPrisma.saleAdjustment.count({ where: { saleId: sale.id } })).toBe(1);
+    });
+
+    it('isolates another tenant and rolls back when the originating location has no open shift', async () => {
+      const sale = await sell('91000000-0000-4000-8000-000000000006', 1);
+      const command = {
+        idempotencyKey: '92000000-0000-4000-8000-000000000006',
+        reason: 'Sin caja abierta',
+        items: [{ saleItemId: sale.items[0].id, quantity: 1 }],
+      };
+      const foreign = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/returns`)
+        .set('Cookie', ownerCookieB)
+        .send(command);
+      expect(foreign.status).toBe(404);
+
+      await testPrisma.cashShift.updateMany({
+        where: { tenantId: tenantAId, locationId: locationAId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      const withoutShift = await request(app.getHttpServer())
+        .post(`/api/sales/${sale.id}/returns`)
+        .set('Cookie', ownerCookieA)
+        .send(command);
+      expect(withoutShift.status).toBe(400);
+      expect(withoutShift.body.code).toBe('SHIFT_REQUIRED');
+      expect(await testPrisma.saleAdjustment.count({ where: { saleId: sale.id } })).toBe(0);
+      expect(
+        await testPrisma.inventoryMovement.count({ where: { saleId: sale.id, type: 'RETURN' } })
+      ).toBe(0);
+    });
+
+    it('serializes concurrent retries into one adjustment and one pair of ledger effects', async () => {
+      const sale = await sell('91000000-0000-4000-8000-000000000007', 1);
+      const command = {
+        idempotencyKey: '92000000-0000-4000-8000-000000000007',
+        reason: 'Reintento concurrente',
+        items: [{ saleItemId: sale.items[0].id, quantity: 1 }],
+      };
+      const submit = () =>
+        request(app.getHttpServer())
+          .post(`/api/sales/${sale.id}/returns`)
+          .set('Cookie', ownerCookieA)
+          .send(command);
+      const responses = await Promise.all([submit(), submit()]);
+
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(responses.some((response) => response.body.idempotentReplay)).toBe(true);
+      expect(await testPrisma.saleAdjustment.count({ where: { saleId: sale.id } })).toBe(1);
+      expect(
+        await testPrisma.inventoryMovement.count({ where: { saleId: sale.id, type: 'RETURN' } })
+      ).toBe(1);
+      expect(
+        await testPrisma.cashMovement.count({ where: { saleId: sale.id, type: 'REFUND' } })
+      ).toBe(1);
     });
   });
 

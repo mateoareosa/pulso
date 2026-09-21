@@ -46,8 +46,37 @@ export const SalesScreen: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [remoteMatches, setRemoteMatches] = useState<CatalogProductItem[] | null>(null);
+  const [scanFeedback, setScanFeedback] = useState<'idle' | 'success' | 'error'>('idle');
+  const [scanMessage, setScanMessage] = useState('Listo para escanear');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const activeQueryIdRef = useRef(0);
+
+  const playScanTone = (success: boolean) => {
+    // Scanner feedback must remain useful without relying on color alone.
+    try {
+      const AudioContextCtor = window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) return;
+      const context = new AudioContextCtor();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.frequency.value = success ? 880 : 180;
+      oscillator.type = 'square';
+      gain.gain.setValueAtTime(0.035, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.09);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.09);
+    } catch {
+      // Audio may be blocked by browser policy; visual and aria feedback remain.
+    }
+  };
+
+  const announceScan = (kind: 'success' | 'error', message: string) => {
+    setScanFeedback(kind);
+    setScanMessage(message);
+    playScanTone(kind === 'success');
+  };
 
   useEffect(() => {
     if (session?.tenant?.id && session?.location?.id) {
@@ -169,6 +198,7 @@ export const SalesScreen: React.FC = () => {
 
       if (!selectedProduct) {
         setErrorMessage(`Producto no encontrado para "${searchQuery}"`);
+        announceScan('error', `No encontrado: ${searchQuery}`);
         return;
       }
 
@@ -182,6 +212,7 @@ export const SalesScreen: React.FC = () => {
       setRemoteMatches(null);
       setSelectedIndex(0);
       dismissError();
+      announceScan('success', `Agregado: ${selectedProduct.name}`);
     }
   };
 
@@ -268,6 +299,7 @@ export const SalesScreen: React.FC = () => {
     if (filteredProducts.length === 0) {
       if (searchQuery.trim()) {
         setErrorMessage(`Producto no encontrado para "${searchQuery}"`);
+        announceScan('error', `No encontrado: ${searchQuery}`);
       }
       return;
     }
@@ -283,6 +315,7 @@ export const SalesScreen: React.FC = () => {
       setSearchQuery('');
       setSelectedIndex(0);
       dismissError();
+      announceScan('success', `Agregado: ${selectedProduct.name}`);
     }
   };
 
@@ -330,7 +363,15 @@ export const SalesScreen: React.FC = () => {
               minHeight: '46px',
             }}
           >
-            <IconBarcode size={24} style={{ color: 'var(--color-ink)', marginRight: '10px' }} />
+            <button
+              type="button"
+              aria-label="Activar escáner"
+              title="Enfocar lector (F2)"
+              onClick={() => searchInputRef.current?.focus()}
+              style={{ display: 'grid', placeItems: 'center', padding: 0, marginRight: '10px', border: 'none', background: 'transparent', color: 'var(--color-ink)', cursor: 'pointer' }}
+            >
+              <IconBarcode size={24} />
+            </button>
             <input
               ref={searchInputRef}
               type="text"
@@ -371,6 +412,14 @@ export const SalesScreen: React.FC = () => {
               <IconSearch size={16} />
               <span>AGREGAR</span>
             </button>
+          </div>
+          <div aria-live="polite" aria-atomic="true" style={{
+            marginTop: '6px', minHeight: '20px',
+            color: scanFeedback === 'error' ? 'var(--color-tomato-solid)' : 'var(--color-ink-muted)',
+            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 700,
+          }}>
+            {scanFeedback === 'success' ? '✓ ' : scanFeedback === 'error' ? '⚠ ' : '⌁ '}
+            {scanMessage} · F2 enfoca el lector · también podés buscar manualmente
           </div>
         </form>
 
@@ -479,7 +528,7 @@ export const SalesScreen: React.FC = () => {
                 padding: '24px 16px',
                 textAlign: 'center',
                 backgroundColor: 'var(--color-surface-sunken)',
-                border: '2px solid var(--color-danger, #D32F2F)',
+                border: '2px solid var(--color-danger-solid)',
                 color: 'var(--color-ink)',
                 fontFamily: 'var(--font-sans)',
                 fontWeight: 700,

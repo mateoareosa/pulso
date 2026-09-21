@@ -1,8 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSalesStore } from '../store/sales.store';
 import { useOptionalAuth } from '../../auth/AuthContext';
 import { Money } from '@pulso/domain';
 import { IconSearch, IconClose, IconHistory, IconAlert } from '@pulso/icons';
+import { salesApi } from '../services/sales-api';
+import { ApiError } from '../../../services/api-client';
+import { SaleAdjustmentModal } from './SaleAdjustmentModal';
+
+const createAdjustmentIdempotencyKey = (): string => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = token === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
 
 export const SalesHistoryScreen: React.FC = () => {
   const auth = useOptionalAuth();
@@ -27,6 +39,12 @@ export const SalesHistoryScreen: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [adjustmentMode, setAdjustmentMode] = useState<'RETURN' | 'VOID' | null>(null);
+  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
+  const saleDetailCloseRef = useRef<HTMLButtonElement>(null);
+  const canAdjust = session?.role === 'OWNER' || session?.role === 'MANAGER';
+  const adjustmentsEnabled = import.meta.env.VITE_SALES_ADJUSTMENTS_ENABLED !== 'false';
 
   const handleFetch = useCallback(
     (page = 1) => {
@@ -67,13 +85,18 @@ export const SalesHistoryScreen: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedSaleDetail) {
+      if (e.key === 'Escape' && selectedSaleDetail && !adjustmentMode) {
         closeSaleDetail();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedSaleDetail, closeSaleDetail]);
+  }, [selectedSaleDetail, adjustmentMode, closeSaleDetail]);
+
+  useEffect(() => {
+    if (!selectedSaleDetail || adjustmentMode) return;
+    saleDetailCloseRef.current?.focus();
+  }, [selectedSaleDetail, adjustmentMode]);
 
   const formatDate = (isoString: string) => {
     try {
@@ -105,8 +128,48 @@ export const SalesHistoryScreen: React.FC = () => {
     }
   };
 
+  const submitAdjustment = async (
+    reason: string,
+    items: Array<{ saleItemId: string; quantity: number }>
+  ) => {
+    if (!selectedSaleDetail || !adjustmentMode) return;
+    setAdjustmentSubmitting(true);
+    setAdjustmentError(null);
+    try {
+      const idempotencyKey = createAdjustmentIdempotencyKey();
+      const result =
+        adjustmentMode === 'RETURN'
+          ? await salesApi.returnSale(selectedSaleDetail.id, { idempotencyKey, reason, items })
+          : await salesApi.voidSale(selectedSaleDetail.id, { idempotencyKey, reason });
+      setAdjustmentMode(null);
+      setAdjustmentSubmitting(false);
+      useSalesStore.setState({ selectedSaleDetail: result.sale });
+      handleFetch(salesPage);
+    } catch (error) {
+      const details =
+        error instanceof ApiError && error.details && typeof error.details === 'object'
+          ? (error.details as { code?: string })
+          : {};
+      const messages: Record<string, string> = {
+        SHIFT_REQUIRED: 'No hay un turno de caja abierto para reintegrar el efectivo.',
+        RETURN_QUANTITY_EXCEEDED: 'La cantidad supera lo que todavía puede devolverse.',
+        VOID_AFTER_RETURN: 'No se puede anular una venta que ya tiene devoluciones.',
+        SALE_NOT_COMPLETED: 'La venta ya no está disponible para ajustes.',
+        IDEMPOTENCY_CONFLICT: 'La operación ya fue enviada con otra información.',
+      };
+      setAdjustmentError(
+        messages[details.code ?? ''] ??
+          (error instanceof Error ? error.message : 'No se pudo completar el ajuste.')
+      );
+      setAdjustmentSubmitting(false);
+    }
+  };
+
   return (
     <div
+      className="ticket-ledger-view ticket-ledger-oversight"
+      role="region"
+      aria-label="Historial de ventas"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -157,6 +220,7 @@ export const SalesHistoryScreen: React.FC = () => {
 
         {/* Filters bar */}
         <form
+          className="ticket-ledger-filter"
           onSubmit={(e) => {
             e.preventDefault();
             handleFetch(1);
@@ -174,12 +238,13 @@ export const SalesHistoryScreen: React.FC = () => {
               placeholder="Buscar comprobante, producto..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="ticket-ledger-control"
               aria-label="Buscar ventas"
               style={{
                 height: '32px',
                 padding: '0 8px 0 28px',
                 fontSize: 'var(--text-xs)',
-                backgroundColor: 'var(--color-panel)',
+                backgroundColor: 'var(--color-surface)',
                 color: 'var(--color-ink)',
                 border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-xs)',
@@ -206,12 +271,13 @@ export const SalesHistoryScreen: React.FC = () => {
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
+              className="ticket-ledger-control"
               aria-label="Fecha desde"
               style={{
                 height: '32px',
                 padding: '0 6px',
                 fontSize: 'var(--text-xs)',
-                backgroundColor: 'var(--color-panel)',
+                backgroundColor: 'var(--color-surface)',
                 color: 'var(--color-ink)',
                 border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-xs)',
@@ -225,12 +291,13 @@ export const SalesHistoryScreen: React.FC = () => {
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
+              className="ticket-ledger-control"
               aria-label="Fecha hasta"
               style={{
                 height: '32px',
                 padding: '0 6px',
                 fontSize: 'var(--text-xs)',
-                backgroundColor: 'var(--color-panel)',
+                backgroundColor: 'var(--color-surface)',
                 color: 'var(--color-ink)',
                 border: '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-xs)',
@@ -240,6 +307,7 @@ export const SalesHistoryScreen: React.FC = () => {
 
           <button
             type="submit"
+            className="ticket-ledger-control ticket-ledger-action ticket-ledger-action--primary"
             style={{
               height: '32px',
               padding: '0 12px',
@@ -258,6 +326,7 @@ export const SalesHistoryScreen: React.FC = () => {
           {(searchTerm || fromDate || toDate) && (
             <button
               type="button"
+              className="ticket-ledger-control"
               onClick={() => {
                 setSearchTerm('');
                 setFromDate('');
@@ -291,9 +360,10 @@ export const SalesHistoryScreen: React.FC = () => {
       {/* Error message */}
       {salesHistoryError && (
         <div
+          className="ticket-ledger-alert ticket-ledger-alert--error"
           style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid #ef4444',
+            backgroundColor: 'var(--color-tomato-soft)',
+            border: '1px solid var(--color-tomato-border)',
             color: 'var(--color-ink)',
             padding: '10px 14px',
             borderRadius: 'var(--radius-xs)',
@@ -315,7 +385,7 @@ export const SalesHistoryScreen: React.FC = () => {
           aria-label="Operaciones locales pendientes / fallidas"
           style={{
             marginBottom: '16px',
-            border: '1px solid var(--color-amber-border, #d97706)',
+            border: '1px solid var(--color-amber-border)',
             borderRadius: 'var(--radius-xs)',
             backgroundColor: 'var(--color-surface-sunken)',
             padding: '12px 14px',
@@ -345,9 +415,9 @@ export const SalesHistoryScreen: React.FC = () => {
               <span
                 style={{
                   fontSize: '11px',
-                  backgroundColor: 'var(--color-amber-soft, #fef3c7)',
+                  backgroundColor: 'var(--color-amber-soft)',
                   color: 'var(--color-ink)',
-                  border: '1px solid var(--color-amber-border, #d97706)',
+                  border: '1px solid var(--color-amber-border)',
                   padding: '1px 6px',
                   borderRadius: 'var(--radius-xs)',
                   fontFamily: 'var(--font-mono)',
@@ -371,11 +441,12 @@ export const SalesHistoryScreen: React.FC = () => {
             style={{
               border: '1px solid var(--color-border)',
               borderRadius: 'var(--radius-xs)',
-              backgroundColor: 'var(--color-panel)',
+              backgroundColor: 'var(--color-surface)',
               overflow: 'auto',
             }}
           >
             <table
+              className="ticket-ledger-table"
               style={{
                 width: '100%',
                 borderCollapse: 'collapse',
@@ -413,8 +484,8 @@ export const SalesHistoryScreen: React.FC = () => {
                       style={{
                         borderBottom: '1px solid var(--color-border)',
                         backgroundColor: isLocalFailed
-                          ? 'var(--color-tomato-soft, rgba(239, 68, 68, 0.08))'
-                          : 'var(--color-amber-soft, rgba(245, 158, 11, 0.08))',
+                          ? 'var(--color-tomato-soft)'
+                          : 'var(--color-amber-soft)',
                       }}
                     >
                       <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
@@ -452,15 +523,13 @@ export const SalesHistoryScreen: React.FC = () => {
                             fontSize: '10px',
                             letterSpacing: '0.4px',
                             backgroundColor: isLocalFailed
-                              ? 'var(--color-tomato-soft, #fee2e2)'
-                              : 'var(--color-amber-soft, #fef3c7)',
-                            color: isLocalFailed
-                              ? 'var(--color-tomato-solid, #991b1b)'
-                              : 'var(--color-ink, #92400e)',
+                              ? 'var(--color-tomato-soft)'
+                              : 'var(--color-amber-soft)',
+                            color: isLocalFailed ? 'var(--color-tomato-solid)' : 'var(--color-ink)',
                             border: `1px solid ${
                               isLocalFailed
-                                ? 'var(--color-tomato-border, #f87171)'
-                                : 'var(--color-amber-border, #f59e0b)'
+                                ? 'var(--color-tomato-border)'
+                                : 'var(--color-amber-border)'
                             }`,
                           }}
                           title={isLocalFailed && sale.lastError ? sale.lastError : undefined}
@@ -472,7 +541,7 @@ export const SalesHistoryScreen: React.FC = () => {
                         style={{
                           padding: '8px 10px',
                           color: isLocalFailed
-                            ? 'var(--color-tomato-solid, #991b1b)'
+                            ? 'var(--color-tomato-solid)'
                             : 'var(--color-ink-muted)',
                           fontSize: '11px',
                           maxWidth: '220px',
@@ -498,6 +567,7 @@ export const SalesHistoryScreen: React.FC = () => {
                           {isLocalFailed && session?.tenant?.id && session?.location?.id && (
                             <button
                               type="button"
+                              className="ticket-ledger-control ticket-ledger-action"
                               onClick={() =>
                                 retryOfflineSale(
                                   {
@@ -512,9 +582,9 @@ export const SalesHistoryScreen: React.FC = () => {
                                 height: '26px',
                                 padding: '0 8px',
                                 fontSize: 'var(--text-xs)',
-                                backgroundColor: 'var(--color-tomato-soft, #fee2e2)',
-                                color: 'var(--color-tomato-solid, #991b1b)',
-                                border: '1px solid var(--color-tomato-border, #f87171)',
+                                backgroundColor: 'var(--color-tomato-soft)',
+                                color: 'var(--color-tomato-solid)',
+                                border: '1px solid var(--color-tomato-border)',
                                 borderRadius: 'var(--radius-xs)',
                                 cursor: 'pointer',
                                 fontWeight: 800,
@@ -554,15 +624,18 @@ export const SalesHistoryScreen: React.FC = () => {
 
       {/* Table Container */}
       <div
+        className="ticket-ledger-surface ticket-ledger-table-wrap"
         style={{
           flex: 1,
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-xs)',
-          backgroundColor: 'var(--color-panel)',
+          backgroundColor: 'var(--color-surface)',
           overflow: 'auto',
         }}
       >
         <table
+          className="ticket-ledger-table"
+          data-testid="sales-history-table"
           style={{
             width: '100%',
             borderCollapse: 'collapse',
@@ -624,9 +697,9 @@ export const SalesHistoryScreen: React.FC = () => {
                     style={{
                       borderBottom: '1px solid var(--color-border)',
                       backgroundColor: isLocalFailed
-                        ? 'rgba(239, 68, 68, 0.05)'
+                        ? 'var(--color-tomato-soft)'
                         : isLocalPending
-                          ? 'rgba(234, 179, 8, 0.05)'
+                          ? 'var(--color-amber-soft)'
                           : 'transparent',
                     }}
                   >
@@ -667,13 +740,21 @@ export const SalesHistoryScreen: React.FC = () => {
                           fontSize: '10px',
                           letterSpacing: '0.4px',
                           backgroundColor: isLocalFailed
-                            ? 'rgba(239, 68, 68, 0.2)'
+                            ? 'var(--color-tomato-soft)'
                             : isLocalPending
-                              ? 'rgba(234, 179, 8, 0.2)'
-                              : 'rgba(34, 197, 94, 0.2)',
-                          color: isLocalFailed ? '#b91c1c' : isLocalPending ? '#b45309' : '#15803d',
+                              ? 'var(--color-amber-soft)'
+                              : 'var(--color-pulse-soft)',
+                          color: isLocalFailed
+                            ? 'var(--color-tomato-text)'
+                            : isLocalPending
+                              ? 'var(--color-ink)'
+                              : 'var(--color-pulse-text)',
                           border: `1px solid ${
-                            isLocalFailed ? '#ef4444' : isLocalPending ? '#eab308' : '#22c55e'
+                            isLocalFailed
+                              ? 'var(--color-tomato-border)'
+                              : isLocalPending
+                                ? 'var(--color-amber-border)'
+                                : 'var(--color-pulse-border)'
                           }`,
                         }}
                         title={isLocalFailed && sale.lastError ? sale.lastError : undefined}
@@ -688,7 +769,7 @@ export const SalesHistoryScreen: React.FC = () => {
                         <div
                           style={{
                             fontSize: '9px',
-                            color: '#b91c1c',
+                            color: 'var(--color-tomato-text)',
                             marginTop: '2px',
                             maxWidth: '120px',
                             overflow: 'hidden',
@@ -713,6 +794,7 @@ export const SalesHistoryScreen: React.FC = () => {
                         {isLocalFailed && session?.tenant?.id && session?.location?.id && (
                           <button
                             type="button"
+                            className="ticket-ledger-control ticket-ledger-action"
                             onClick={() =>
                               retryOfflineSale(
                                 {
@@ -727,9 +809,9 @@ export const SalesHistoryScreen: React.FC = () => {
                               height: '26px',
                               padding: '0 8px',
                               fontSize: 'var(--text-xs)',
-                              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                              color: '#b91c1c',
-                              border: '1px solid #ef4444',
+                              backgroundColor: 'var(--color-tomato-soft)',
+                              color: 'var(--color-tomato-text)',
+                              border: '1px solid var(--color-tomato-border)',
                               borderRadius: 'var(--radius-xs)',
                               cursor: 'pointer',
                               fontWeight: 800,
@@ -768,6 +850,7 @@ export const SalesHistoryScreen: React.FC = () => {
 
       {/* Pagination Footer */}
       <div
+        className="ticket-ledger-pagination"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -783,12 +866,13 @@ export const SalesHistoryScreen: React.FC = () => {
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             type="button"
+            className="ticket-ledger-control"
             disabled={salesPage <= 1 || isSalesHistoryLoading}
             onClick={() => handleFetch(salesPage - 1)}
             style={{
               height: '30px',
               padding: '0 12px',
-              backgroundColor: 'var(--color-panel)',
+              backgroundColor: 'var(--color-surface)',
               color: 'var(--color-ink)',
               border: '1px solid var(--color-border)',
               borderRadius: 'var(--radius-xs)',
@@ -801,12 +885,13 @@ export const SalesHistoryScreen: React.FC = () => {
           </button>
           <button
             type="button"
+            className="ticket-ledger-control"
             disabled={salesPage >= salesTotalPages || isSalesHistoryLoading}
             onClick={() => handleFetch(salesPage + 1)}
             style={{
               height: '30px',
               padding: '0 12px',
-              backgroundColor: 'var(--color-panel)',
+              backgroundColor: 'var(--color-surface)',
               color: 'var(--color-ink)',
               border: '1px solid var(--color-border)',
               borderRadius: 'var(--radius-xs)',
@@ -823,10 +908,15 @@ export const SalesHistoryScreen: React.FC = () => {
       {/* Sale Detail Modal */}
       {selectedSaleDetail && (
         <div
+          className="sale-detail-modal"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeSaleDetail();
+          }}
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backgroundColor: 'var(--color-overlay)',
             backdropFilter: 'blur(2px)',
             display: 'flex',
             alignItems: 'center',
@@ -838,7 +928,8 @@ export const SalesHistoryScreen: React.FC = () => {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Detalle de venta"
+            aria-labelledby="sale-detail-title"
+            className="ticket-ledger-modal ticket-ledger-surface sale-detail-modal__content"
             style={{
               backgroundColor: 'var(--color-surface)',
               border: '2px solid var(--color-ink)',
@@ -852,314 +943,446 @@ export const SalesHistoryScreen: React.FC = () => {
               fontFamily: 'var(--font-sans)',
             }}
           >
-            {/* Modal Header */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderBottom: '2px solid var(--color-border)',
-                paddingBottom: '12px',
-                marginBottom: '16px',
-              }}
-            >
-              <div>
-                <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 900 }}>
-                  DETALLE DE VENTA
-                </h2>
-                <div
-                  style={{
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--color-ink-muted)',
-                    fontFamily: 'var(--font-mono)',
-                    marginTop: '2px',
-                  }}
-                >
-                  {selectedSaleDetail.id}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={closeSaleDetail}
-                aria-label="Cerrar detalle"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--color-ink)',
-                  display: 'flex',
-                }}
-              >
-                <IconClose size={20} />
-              </button>
-            </div>
-
-            {/* Context meta */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '10px',
-                backgroundColor: 'var(--color-surface-sunken)',
-                padding: '12px',
-                borderRadius: 'var(--radius-xs)',
-                fontSize: 'var(--text-xs)',
-                marginBottom: '16px',
-              }}
-            >
-              <div>
-                <span style={{ color: 'var(--color-ink-muted)' }}>Fecha:</span>{' '}
-                <strong>{formatDate(selectedSaleDetail.createdAtUtc)}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-ink-muted)' }}>Operador:</span>{' '}
-                <strong>{selectedSaleDetail.user?.name || 'Cajero'}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-ink-muted)' }}>Estado:</span>{' '}
-                <strong
-                  style={{
-                    color:
-                      selectedSaleDetail.status === 'FAILED'
-                        ? 'var(--color-tomato-solid, #991b1b)'
-                        : selectedSaleDetail.status === 'PENDING'
-                          ? 'var(--color-amber-solid, #b45309)'
-                          : 'var(--color-pulse-text, #15803d)',
-                  }}
-                >
-                  {selectedSaleDetail.status === 'FAILED'
-                    ? 'FALLIDA LOCAL'
-                    : selectedSaleDetail.status === 'PENDING'
-                      ? 'PENDIENTE LOCAL'
-                      : 'COMPLETADA'}
-                </strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--color-ink-muted)' }}>Idempotencia:</span>{' '}
-                <span style={{ fontFamily: 'var(--font-mono)' }}>
-                  {selectedSaleDetail.idempotencyKey.slice(0, 13)}...
-                </span>
-              </div>
-            </div>
-
-            {/* Failed Error Banner */}
-            {selectedSaleDetail.status === 'FAILED' && (
-              <div
-                style={{
-                  backgroundColor: 'var(--color-tomato-soft, #fee2e2)',
-                  border: '1px solid var(--color-tomato-border, #f87171)',
-                  color: 'var(--color-tomato-solid, #991b1b)',
-                  padding: '12px 14px',
-                  borderRadius: 'var(--radius-xs)',
-                  marginBottom: '16px',
-                  fontSize: 'var(--text-xs)',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 800,
-                    marginBottom: '4px',
-                  }}
-                >
-                  <IconAlert size={16} />
-                  <span>OPERACIÓN LOCAL FALLIDA</span>
-                </div>
-                <div>
-                  <strong>Causa del rechazo:</strong>{' '}
-                  {selectedSaleDetail.lastError ||
-                    'Error durante la sincronización con el servidor.'}
-                </div>
-              </div>
-            )}
-
-            {/* Items table */}
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
-              Productos Vendidos
-            </h3>
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: 'var(--text-xs)',
-                marginBottom: '16px',
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    backgroundColor: 'var(--color-surface-sunken)',
-                    borderBottom: '1px solid var(--color-border)',
-                  }}
-                >
-                  <th style={{ padding: '6px 8px', textAlign: 'left' }}>Producto</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'center' }}>Código</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'center' }}>Cant.</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right' }}>Precio Unit.</th>
-                  <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedSaleDetail.items?.map((it) => (
-                  <tr key={it.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{it.name}</td>
-                    <td
-                      style={{
-                        padding: '6px 8px',
-                        textAlign: 'center',
-                        fontFamily: 'var(--font-mono)',
-                        color: 'var(--color-ink-muted)',
-                      }}
-                    >
-                      {it.barcode || '-'}
-                    </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>
-                      {it.quantity}
-                    </td>
-                    <td
-                      style={{
-                        padding: '6px 8px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                      }}
-                    >
-                      {Money.fromCents(it.unitPriceCents).format()}
-                    </td>
-                    <td
-                      style={{
-                        padding: '6px 8px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {Money.fromCents(it.totalPriceCents).format()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Tenders breakdown */}
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
-              Medios de Pago
-            </h3>
-            <div
-              style={{
-                backgroundColor: 'var(--color-ticket-edge)',
-                border: '1px dashed var(--color-ink)',
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-xs)',
-                fontSize: 'var(--text-xs)',
-                marginBottom: '20px',
-              }}
-            >
-              {selectedSaleDetail.tenders?.map((t) => (
-                <div
-                  key={t.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginBottom: '4px',
-                  }}
-                >
-                  <span>
-                    <strong>{translateTenderType(t.type).toUpperCase()}</strong>
-                    {t.reference ? ` (${t.reference})` : ''}:
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
-                    {Money.fromCents(t.amountCents).format()}
-                  </span>
-                </div>
-              ))}
-              {selectedSaleDetail.tenders?.[0]?.receivedAmountCents && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.8 }}>
-                  <span>Recibido:</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>
-                    {Money.fromCents(selectedSaleDetail.tenders[0].receivedAmountCents).format()}
-                  </span>
-                </div>
-              )}
-              {selectedSaleDetail.tenders?.[0]?.changeAmountCents && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.8 }}>
-                  <span>Vuelto entregado:</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>
-                    {Money.fromCents(selectedSaleDetail.tenders[0].changeAmountCents).format()}
-                  </span>
-                </div>
-              )}
+            <div role="region" aria-label="Comprobante de venta">
+              {/* Modal Header */}
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  borderTop: '1px solid var(--color-border)',
-                  paddingTop: '6px',
-                  marginTop: '6px',
-                  fontWeight: 900,
-                  fontSize: 'var(--text-sm)',
+                  alignItems: 'center',
+                  borderBottom: '2px solid var(--color-border)',
+                  paddingBottom: '12px',
+                  marginBottom: '16px',
                 }}
               >
-                <span>TOTAL VENTA:</span>
-                <span style={{ fontFamily: 'var(--font-mono)' }}>
-                  {Money.fromCents(selectedSaleDetail.totalCents).format()}
-                </span>
-              </div>
-            </div>
-
-            {/* Retry action for FAILED sale */}
-            {selectedSaleDetail.status === 'FAILED' &&
-              session?.tenant?.id &&
-              session?.location?.id && (
+                <div>
+                  <h2 id="sale-detail-title" style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 900 }}>
+                    DETALLE DE VENTA
+                  </h2>
+                  <div
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--color-ink-muted)',
+                      fontFamily: 'var(--font-mono)',
+                      marginTop: '2px',
+                    }}
+                  >
+                    {selectedSaleDetail.id}
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={async () => {
-                    await retryOfflineSale(
-                      { tenantId: session.tenant.id, locationId: session.location.id },
-                      selectedSaleDetail.idempotencyKey
-                    );
-                    closeSaleDetail();
-                  }}
-                  aria-label={`Reintentar sincronización de comprobante ${selectedSaleDetail.id}`}
+                  ref={saleDetailCloseRef}
+                  className="pulso-button pulso-button--ghost sale-detail-modal__close"
+                  onClick={closeSaleDetail}
+                  aria-label="Cerrar detalle"
                   style={{
-                    width: '100%',
-                    height: '40px',
-                    backgroundColor: 'var(--color-tomato-solid, #991b1b)',
-                    color: '#ffffff',
+                    background: 'none',
                     border: 'none',
-                    borderRadius: 'var(--radius-xs)',
-                    fontWeight: 800,
-                    fontSize: 'var(--text-xs)',
                     cursor: 'pointer',
-                    marginBottom: '8px',
-                    letterSpacing: '0.5px',
+                    color: 'var(--color-ink)',
+                    display: 'flex',
                   }}
                 >
-                  REINTENTAR SINCRONIZACIÓN
+                  <IconClose size={20} />
                 </button>
+              </div>
+
+              {/* Context meta */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '10px',
+                  backgroundColor: 'var(--color-surface-sunken)',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-xs)',
+                  fontSize: 'var(--text-xs)',
+                  marginBottom: '16px',
+                }}
+              >
+                <div>
+                  <span style={{ color: 'var(--color-ink-muted)' }}>Fecha:</span>{' '}
+                  <strong>{formatDate(selectedSaleDetail.createdAtUtc)}</strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--color-ink-muted)' }}>Operador:</span>{' '}
+                  <strong>{selectedSaleDetail.user?.name || 'Cajero'}</strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--color-ink-muted)' }}>Estado:</span>{' '}
+                  <strong
+                    style={{
+                      color:
+                        selectedSaleDetail.status === 'FAILED'
+                          ? 'var(--color-tomato-solid)'
+                          : selectedSaleDetail.status === 'PENDING'
+                            ? 'var(--color-amber-solid)'
+                            : 'var(--color-pulse-text)',
+                    }}
+                  >
+                    {selectedSaleDetail.status === 'FAILED'
+                      ? 'FALLIDA LOCAL'
+                      : selectedSaleDetail.status === 'PENDING'
+                        ? 'PENDIENTE LOCAL'
+                        : 'COMPLETADA'}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--color-ink-muted)' }}>Idempotencia:</span>{' '}
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>
+                    {selectedSaleDetail.idempotencyKey.slice(0, 13)}...
+                  </span>
+                </div>
+              </div>
+
+              {/* Failed Error Banner */}
+              {selectedSaleDetail.status === 'FAILED' && (
+                <div
+                  style={{
+                    backgroundColor: 'var(--color-tomato-soft)',
+                    border: '1px solid var(--color-tomato-border)',
+                    color: 'var(--color-tomato-solid)',
+                    padding: '12px 14px',
+                    borderRadius: 'var(--radius-xs)',
+                    marginBottom: '16px',
+                    fontSize: 'var(--text-xs)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: 800,
+                      marginBottom: '4px',
+                    }}
+                  >
+                    <IconAlert size={16} />
+                    <span>OPERACIÓN LOCAL FALLIDA</span>
+                  </div>
+                  <div>
+                    <strong>Causa del rechazo:</strong>{' '}
+                    {selectedSaleDetail.lastError ||
+                      'Error durante la sincronización con el servidor.'}
+                  </div>
+                </div>
               )}
 
-            {/* Close action */}
-            <button
-              type="button"
-              onClick={closeSaleDetail}
-              style={{
-                width: '100%',
-                height: '40px',
-                backgroundColor: 'var(--color-ink)',
-                color: 'var(--color-surface)',
-                border: 'none',
-                borderRadius: 'var(--radius-xs)',
-                fontWeight: 800,
-                fontSize: 'var(--text-xs)',
-                cursor: 'pointer',
-              }}
-            >
-              CERRAR (ESC)
-            </button>
+              {/* Items table */}
+              <h3 style={{ margin: '0 0 8px', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
+                Productos Vendidos
+              </h3>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: 'var(--text-xs)',
+                  marginBottom: '16px',
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      backgroundColor: 'var(--color-surface-sunken)',
+                      borderBottom: '1px solid var(--color-border)',
+                    }}
+                  >
+                    <th style={{ padding: '6px 8px', textAlign: 'left' }}>Producto</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Código</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Cant.</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Precio Unit.</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedSaleDetail.items?.map((it) => (
+                    <tr key={it.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{it.name}</td>
+                      <td
+                        style={{
+                          padding: '6px 8px',
+                          textAlign: 'center',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--color-ink-muted)',
+                        }}
+                      >
+                        {it.barcode || '-'}
+                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700 }}>
+                        {it.quantity}
+                      </td>
+                      <td
+                        style={{
+                          padding: '6px 8px',
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        {Money.fromCents(it.unitPriceCents).format()}
+                      </td>
+                      <td
+                        style={{
+                          padding: '6px 8px',
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {Money.fromCents(it.totalPriceCents).format()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Tenders breakdown */}
+              <h3 style={{ margin: '0 0 8px', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
+                Medios de Pago
+              </h3>
+              <div
+                style={{
+                  backgroundColor: 'var(--color-ticket-edge)',
+                  border: '1px dashed var(--color-ink)',
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-xs)',
+                  fontSize: 'var(--text-xs)',
+                  marginBottom: '20px',
+                }}
+              >
+                {selectedSaleDetail.tenders?.map((t) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    <span>
+                      <strong>{translateTenderType(t.type).toUpperCase()}</strong>
+                      {t.reference ? ` (${t.reference})` : ''}:
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                      {Money.fromCents(t.amountCents).format()}
+                    </span>
+                  </div>
+                ))}
+                {selectedSaleDetail.tenders?.[0]?.receivedAmountCents && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.8 }}>
+                    <span>Recibido:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>
+                      {Money.fromCents(selectedSaleDetail.tenders[0].receivedAmountCents).format()}
+                    </span>
+                  </div>
+                )}
+                {selectedSaleDetail.tenders?.[0]?.changeAmountCents && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.8 }}>
+                    <span>Vuelto entregado:</span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>
+                      {Money.fromCents(selectedSaleDetail.tenders[0].changeAmountCents).format()}
+                    </span>
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    borderTop: '1px solid var(--color-border)',
+                    paddingTop: '6px',
+                    marginTop: '6px',
+                    fontWeight: 900,
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  <span>TOTAL VENTA:</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>
+                    {Money.fromCents(selectedSaleDetail.totalCents).format()}
+                  </span>
+                </div>
+              </div>
+
+              {selectedSaleDetail.adjustments && selectedSaleDetail.adjustments.length > 0 && (
+                <section
+                  aria-label="Historial de ajustes"
+                  style={{
+                    marginBottom: 16,
+                    borderTop: '1px solid var(--color-border)',
+                    paddingTop: 14,
+                  }}
+                >
+                  <h3 style={{ margin: '0 0 8px', fontSize: 'var(--text-sm)' }}>
+                    Historial de ajustes
+                  </h3>
+                  {selectedSaleDetail.adjustments.map((adjustment) => (
+                    <article
+                      key={adjustment.id}
+                      style={{
+                        fontSize: 12,
+                        padding: '10px 12px',
+                        background: 'var(--color-surface-sunken)',
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <strong>
+                          {adjustment.type === 'VOID' ? 'ANULACIÓN' : 'DEVOLUCIÓN'} ·{' '}
+                          {adjustment.status === 'PENDING' ? 'PENDIENTE' : 'COMPLETADA'}
+                        </strong>
+                        <time dateTime={adjustment.createdAt}>
+                          {formatDate(adjustment.createdAt)}
+                        </time>
+                      </div>
+                      <div>
+                        {Money.fromCents(adjustment.totalCents).format()} ·{' '}
+                        {translateTenderType(adjustment.refundTender)} ·{' '}
+                        {adjustment.refundStatus === 'PENDING'
+                          ? 'Pendiente manual'
+                          : 'Reintegro completado'}
+                      </div>
+                      <div>
+                        {adjustment.reason} · {adjustment.actor.name} ({adjustment.actor.email})
+                      </div>
+                      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                        {adjustment.items.map((item) => {
+                          const saleItem = selectedSaleDetail.items?.find(
+                            (line) => line.id === item.saleItemId
+                          );
+                          return (
+                            <li key={item.id}>
+                              {saleItem?.name ?? item.productId}: {item.quantity} ×{' '}
+                              {Money.fromCents(item.unitPriceCents).format()}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </article>
+                  ))}
+                </section>
+              )}
+
+              {canAdjust &&
+                adjustmentsEnabled &&
+                selectedSaleDetail.status === 'COMPLETED' &&
+                (() => {
+                  const returnedByItem = new Map<string, number>();
+                  for (const adjustment of selectedSaleDetail.adjustments ?? []) {
+                    for (const item of adjustment.items) {
+                      returnedByItem.set(
+                        item.saleItemId,
+                        (returnedByItem.get(item.saleItemId) ?? 0) + Number(item.quantity)
+                      );
+                    }
+                  }
+                  const hasRemainingItems =
+                    selectedSaleDetail.items?.some(
+                      (item) => Number(item.quantity) - (returnedByItem.get(item.id) ?? 0) > 0
+                    ) ?? false;
+                  const hasPriorAdjustment = (selectedSaleDetail.adjustments?.length ?? 0) > 0;
+                  return (
+                    <section
+                      aria-label="Acciones de devolución y anulación"
+                      style={{ marginBottom: 16 }}
+                    >
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          className="pulso-button pulso-button--secondary pulso-button--sm"
+                          onClick={() => {
+                            setAdjustmentError(null);
+                            setAdjustmentMode('RETURN');
+                          }}
+                          disabled={!hasRemainingItems}
+                        >
+                          Devolver artículos
+                        </button>
+                        {!hasPriorAdjustment && (
+                          <button
+                          type="button"
+                          className="pulso-button pulso-button--danger pulso-button--sm"
+                            onClick={() => {
+                              setAdjustmentError(null);
+                              setAdjustmentMode('VOID');
+                            }}
+                          >
+                            Anular venta
+                          </button>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })()}
+
+              {/* Retry action for FAILED sale */}
+              {selectedSaleDetail.status === 'FAILED' &&
+                session?.tenant?.id &&
+                session?.location?.id && (
+                  <button
+                    type="button"
+                    className="ticket-ledger-control ticket-ledger-action ticket-ledger-action--primary"
+                    onClick={async () => {
+                      await retryOfflineSale(
+                        { tenantId: session.tenant.id, locationId: session.location.id },
+                        selectedSaleDetail.idempotencyKey
+                      );
+                      closeSaleDetail();
+                    }}
+                    aria-label={`Reintentar sincronización de comprobante ${selectedSaleDetail.id}`}
+                    style={{
+                      width: '100%',
+                      height: '40px',
+                      backgroundColor: 'var(--color-tomato-solid)',
+                      color: 'var(--color-surface)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-xs)',
+                      fontWeight: 800,
+                      fontSize: 'var(--text-xs)',
+                      cursor: 'pointer',
+                      marginBottom: '8px',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    REINTENTAR SINCRONIZACIÓN
+                  </button>
+                )}
+
+              {/* Close action */}
+              <button
+                type="button"
+                className="pulso-button pulso-button--secondary sale-detail-modal__close-action"
+                onClick={closeSaleDetail}
+                style={{
+                  width: '100%',
+                  height: '40px',
+                  backgroundColor: 'var(--color-ink)',
+                  color: 'var(--color-surface)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-xs)',
+                  fontWeight: 800,
+                  fontSize: 'var(--text-xs)',
+                  cursor: 'pointer',
+                }}
+              >
+                CERRAR (ESC)
+              </button>
+            </div>
           </div>
         </div>
+      )}
+      {selectedSaleDetail && adjustmentMode && (
+        <SaleAdjustmentModal
+          sale={selectedSaleDetail}
+          mode={adjustmentMode}
+          isSubmitting={adjustmentSubmitting}
+          error={adjustmentError}
+          onClose={() => {
+            if (!adjustmentSubmitting) {
+              setAdjustmentMode(null);
+              setAdjustmentError(null);
+            }
+          }}
+          onSubmit={submitAdjustment}
+        />
       )}
     </div>
   );

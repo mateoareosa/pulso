@@ -8,6 +8,11 @@ import {
   LocationResponseSchema,
   LocationListResponseSchema,
   CreateLocationInputSchema,
+  ActionTokenSchema,
+  AcceptInvitationInputSchema,
+  ChangePasswordInputSchema,
+  ResetPasswordInputSchema,
+  ActionPreviewResponseSchema,
 } from '../src/auth/auth.schema.js';
 
 describe('Auth & Tenancy Contracts (RED Phase)', () => {
@@ -270,5 +275,56 @@ describe('Auth & Tenancy Contracts (RED Phase)', () => {
         expect(res.error.issues.map((i) => i.code)).toContain('unrecognized_keys');
       }
     });
+  });
+});
+
+describe('employee action and password contracts', () => {
+  const token = 'a'.repeat(64);
+
+  it('accepts opaque action tokens and rejects malformed or injected values', () => {
+    expect(ActionTokenSchema.parse(token)).toBe(token);
+    expect(ActionTokenSchema.safeParse('short token').success).toBe(false);
+    expect(
+      AcceptInvitationInputSchema.safeParse({ token, password: 'new secure passphrase', userId: 'x' })
+        .success
+    ).toBe(false);
+  });
+
+  it('enforces the shared password policy for accept, reset, and change', () => {
+    expect(AcceptInvitationInputSchema.safeParse({ token, password: 'new secure passphrase' }).success).toBe(true);
+    expect(ResetPasswordInputSchema.safeParse({ token, password: 'short' }).success).toBe(false);
+    expect(
+      ChangePasswordInputSchema.safeParse({
+        currentPassword: 'old secure passphrase',
+        password: 'replacement secure passphrase',
+      }).success
+    ).toBe(true);
+    expect(
+      ChangePasswordInputSchema.safeParse({
+        currentPassword: 'old secure passphrase',
+        password: 'replacement secure passphrase',
+        tenantId: 'injected',
+      }).success
+    ).toBe(false);
+  });
+
+  it('exposes safe action preview data without hashes or user enumeration details', () => {
+    expect(
+      ActionPreviewResponseSchema.safeParse({
+        type: 'INVITE',
+        tenantName: 'Kiosco Centro',
+        email: 'ana@example.com',
+        expiresAt: '2026-09-15T12:00:00.000Z',
+      }).success
+    ).toBe(true);
+    expect(
+      ActionPreviewResponseSchema.safeParse({
+        type: 'INVITE',
+        tenantName: 'Kiosco Centro',
+        email: 'ana@example.com',
+        expiresAt: '2026-09-15T12:00:00.000Z',
+        tokenHash: 'secret',
+      }).success
+    ).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import { CashShiftClosedSummaryView } from './CashShiftClosedSummaryView';
 import { CashShiftsHistoryView } from './CashShiftsHistoryView';
 import { CashShiftDetailModal } from './CashShiftDetailModal';
 import { IconCash, IconHistory } from '@pulso/icons';
+import '../../operations/ticket-ledger.css';
 
 export const CashScreen: React.FC = () => {
   const { session } = useAuth();
@@ -15,7 +16,9 @@ export const CashScreen: React.FC = () => {
 
   const {
     activeShift,
+    isActiveShiftConfirmed,
     lastClosedShift,
+    isLoadingActive,
     isSubmitting,
     error,
     shiftHistory,
@@ -67,9 +70,9 @@ export const CashScreen: React.FC = () => {
     return await registerCashOut(amountCents, reason, { tenantId, locationId });
   };
 
-  const handleCloseShift = async (countedAmountCents: number) => {
+  const handleCloseShift = async (countedAmountCents: number, motivo?: string) => {
     if (!tenantId || !locationId) return false;
-    return await closeShift(countedAmountCents, { tenantId, locationId });
+    return await closeShift(countedAmountCents, motivo, { tenantId, locationId });
   };
 
   const handleFetchHistory = (params: Parameters<typeof loadShiftHistory>[1]) => {
@@ -83,16 +86,17 @@ export const CashScreen: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%' }}>
+    <div className="ticket-ledger-shell">
       {/* Sub-navigation bar for Owner/Manager */}
       {canViewHistory && (
         <div
+          className="ticket-ledger-nav"
           style={{
             display: 'flex',
             gap: '8px',
             padding: '8px 16px',
-            backgroundColor: 'var(--color-surface-raised, rgba(0,0,0,0.03))',
-            borderBottom: '1px solid var(--color-border, rgba(0,0,0,0.1))',
+            backgroundColor: 'var(--color-surface-sunken)',
+            borderBottom: '1px solid var(--color-border)',
           }}
         >
           <button
@@ -104,14 +108,12 @@ export const CashScreen: React.FC = () => {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              fontSize: 'var(--text-xs, 12px)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 800,
-              backgroundColor:
-                activeSubTab === 'current' ? 'var(--color-surface, #fff)' : 'transparent',
-              color:
-                activeSubTab === 'current' ? 'var(--color-ink)' : 'var(--color-ink-muted, #666)',
-              border: activeSubTab === 'current' ? '1px solid var(--color-border, #ccc)' : 'none',
-              borderRadius: 'var(--radius-xs, 4px)',
+              backgroundColor: activeSubTab === 'current' ? 'var(--color-surface)' : 'transparent',
+              color: activeSubTab === 'current' ? 'var(--color-ink)' : 'var(--color-ink-muted)',
+              border: activeSubTab === 'current' ? '1px solid var(--color-border)' : 'none',
+              borderRadius: 'var(--radius-xs)',
               cursor: 'pointer',
             }}
           >
@@ -133,14 +135,12 @@ export const CashScreen: React.FC = () => {
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
-              fontSize: 'var(--text-xs, 12px)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 800,
-              backgroundColor:
-                activeSubTab === 'history' ? 'var(--color-surface, #fff)' : 'transparent',
-              color:
-                activeSubTab === 'history' ? 'var(--color-ink)' : 'var(--color-ink-muted, #666)',
-              border: activeSubTab === 'history' ? '1px solid var(--color-border, #ccc)' : 'none',
-              borderRadius: 'var(--radius-xs, 4px)',
+              backgroundColor: activeSubTab === 'history' ? 'var(--color-surface)' : 'transparent',
+              color: activeSubTab === 'history' ? 'var(--color-ink)' : 'var(--color-ink-muted)',
+              border: activeSubTab === 'history' ? '1px solid var(--color-border)' : 'none',
+              borderRadius: 'var(--radius-xs)',
               cursor: 'pointer',
             }}
           >
@@ -151,7 +151,7 @@ export const CashScreen: React.FC = () => {
       )}
 
       {/* Main View Area */}
-      <div style={{ flex: 1, padding: '8px 0' }}>
+      <div className="ticket-ledger-content">
         {activeSubTab === 'history' && canViewHistory ? (
           <CashShiftsHistoryView
             shifts={shiftHistory}
@@ -164,6 +164,24 @@ export const CashScreen: React.FC = () => {
             onFetch={handleFetchHistory}
             onSelectShift={handleSelectHistoricalShift}
           />
+        ) : isLoadingActive && !activeShift ? (
+          <div
+            data-testid="cash-loading-state"
+            role="status"
+            className="ticket-ledger-empty"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '64px 16px',
+              color: 'var(--color-ink-muted)',
+              fontSize: 'var(--text-sm)',
+              fontWeight: 700,
+            }}
+          >
+            <span>Cargando estado de caja...</span>
+          </div>
         ) : lastClosedShift && !activeShift ? (
           <CashShiftClosedSummaryView
             shift={lastClosedShift}
@@ -172,6 +190,7 @@ export const CashScreen: React.FC = () => {
         ) : activeShift ? (
           <CashShiftActiveView
             shift={activeShift}
+            isConfirmed={isActiveShiftConfirmed}
             isOffline={isOffline}
             isSubmitting={isSubmitting}
             pendingOfflineSalesCount={pendingSyncCount}

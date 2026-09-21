@@ -25,6 +25,8 @@ const mockAuthenticatedSession = {
 
 describe('App Root Component - Clean Production Shell', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState({}, '', '/');
     useSalesStore.getState().clearCart();
     useSalesStore.getState().dismissSuccess();
     vi.spyOn(apiClient, 'getCurrentSession').mockResolvedValue(mockAuthenticatedSession);
@@ -77,5 +79,64 @@ describe('App Root Component - Clean Production Shell', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/Escanear código o buscar producto/i)).toBeDefined();
     });
+  });
+
+  it('keeps the operational ribbon and shared connection state synchronized with browser offline events', async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('banner')).toBeTruthy();
+    });
+
+    expect(screen.getByRole('banner').classList.contains('pulso-ribbon')).toBe(true);
+    const connectionButton = screen.getByRole('button', { name: /Estado de conexión/i });
+    expect(connectionButton.textContent).toContain('ONLINE');
+
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+    window.dispatchEvent(new Event('offline'));
+
+    await waitFor(() => expect(connectionButton.textContent).toContain('SIN CONEXIÓN'));
+  });
+
+  it.each([
+    {
+      role: 'CASHIER' as const,
+      visible: ['MOSTRADOR', 'CAJA', 'HISTORIAL'],
+      hidden: ['EMPLEADOS', 'PRODUCTOS', 'COMPRAS'],
+    },
+    {
+      role: 'MANAGER' as const,
+      visible: ['MOSTRADOR', 'CAJA', 'HISTORIAL', 'PRODUCTOS', 'COMPRAS'],
+      hidden: ['EMPLEADOS'],
+    },
+  ])(
+    'renders the permitted operational navigation for $role employees',
+    async ({ role, visible, hidden }) => {
+      vi.mocked(apiClient.getCurrentSession).mockResolvedValue({
+        ...mockAuthenticatedSession,
+        role,
+      });
+
+      render(<App />);
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'MOSTRADOR' })).toBeDefined());
+
+      for (const label of visible) {
+        expect(screen.getByRole('tab', { name: label })).toBeDefined();
+      }
+      for (const label of hidden) {
+        expect(screen.queryByRole('tab', { name: label })).toBeNull();
+      }
+    }
+  );
+
+  it('does not bootstrap an existing session while an action token is being accepted', async () => {
+    window.history.replaceState({}, '', `/accept-invitation#token=${'a'.repeat(43)}`);
+    vi.spyOn(apiClient, 'previewAction').mockImplementation(() => new Promise(() => {}));
+
+    render(<App />);
+
+    expect(await screen.findByText('PULSO / ACCESO')).toBeDefined();
+    expect(apiClient.getCurrentSession).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    forbidOnly: process.env.CI === 'true',
     globals: true,
     environment: 'node',
     globalSetup: ['./test/setup-test-db-global.ts'],

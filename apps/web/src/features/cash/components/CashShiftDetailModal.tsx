@@ -119,7 +119,7 @@ export const CashShiftDetailModal: React.FC<CashShiftDetailModalProps> = ({
               role="alert"
               style={{
                 backgroundColor: 'rgba(220, 53, 69, 0.12)',
-                color: 'var(--color-danger, #dc3545)',
+                color: 'var(--color-danger-solid)',
                 padding: '12px',
                 borderRadius: '4px',
                 fontSize: '13px',

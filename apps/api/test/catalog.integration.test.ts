@@ -70,12 +70,15 @@ describe('Catalog & Inventory Integration Suite (PostgreSQL Real)', () => {
         passwordHash: await hashPassword('CashierPass123!'),
       },
     });
-    await testPrisma.tenantMembership.create({
+    const cashierMembership = await testPrisma.tenantMembership.create({
       data: {
         tenantId: tenantAId,
         userId: cashierUser.id,
         role: 'CASHIER',
       },
+    });
+    await testPrisma.membershipLocation.create({
+      data: { tenantId: tenantAId, membershipId: cashierMembership.id, locationId: locationAId },
     });
     const cashierLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
       email: 'cajero.a@pulso.dev',
@@ -312,6 +315,39 @@ describe('Catalog & Inventory Integration Suite (PostgreSQL Real)', () => {
       expect(res.status).toBe(200);
       expect(res.body.items[0].barcode).toBe('779002');
       expect(res.body.items[0].name).toBe('Gaseosa Cola 500ml');
+    });
+
+    it('returns only the exact product for the dedicated barcode filter', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/products')
+        .query({ barcode: '779002' })
+        .set('Cookie', cashierCookieA);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0].barcode).toBe('779002');
+      expect(res.body.items[0].name).toBe('Gaseosa Cola 500ml');
+    });
+
+    it('returns a safe empty result when an exact scanned barcode does not exist', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/products')
+        .query({ barcode: '0000000000000' })
+        .set('Cookie', cashierCookieA);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ items: [], total: 0, page: 1, totalPages: 1 });
+    });
+
+    it('rejects a blank barcode filter instead of falling back to the full catalog', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/products')
+        .query({ barcode: '   ' })
+        .set('Cookie', cashierCookieA);
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Parámetros de búsqueda inválidos');
     });
 
     it('hides inactive or unavailable products from CASHIER', async () => {

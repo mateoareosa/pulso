@@ -6,6 +6,7 @@ import { AuthContext } from '../src/features/auth/AuthContext';
 import { salesApi } from '../src/features/sales/services/sales-api';
 import { offlineDb } from '../src/features/sync/offline-db';
 import 'fake-indexeddb/auto';
+import type { SaleResponse } from '@pulso/contracts';
 
 describe('SalesHistoryScreen', () => {
   const mockSession = {
@@ -26,7 +27,7 @@ describe('SalesHistoryScreen', () => {
     retryBootstrap: vi.fn(),
   };
 
-  const mockSales = [
+  const mockSales: SaleResponse[] = [
     {
       id: 'sale-1',
       tenantId: 'tenant-1',
@@ -65,6 +66,7 @@ describe('SalesHistoryScreen', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await offlineDb.clearAll();
     useSalesStore.setState({
       salesHistory: [],
@@ -78,6 +80,29 @@ describe('SalesHistoryScreen', () => {
       selectedSaleDetail: null,
       isDetailLoading: false,
     });
+  });
+
+  it('exposes sales history as an oversight ledger with an accessible detail region', async () => {
+    vi.spyOn(salesApi, 'fetchSales').mockResolvedValueOnce({
+      items: mockSales,
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+
+    render(
+      <AuthContext.Provider value={mockAuthContext}>
+        <SalesHistoryScreen />
+      </AuthContext.Provider>
+    );
+
+    const history = await screen.findByRole('region', { name: /historial de ventas/i });
+    expect(history).toHaveClass('ticket-ledger-view', 'ticket-ledger-oversight');
+    expect(screen.getByTestId('sales-history-table')).toHaveClass('ticket-ledger-table');
+    fireEvent.click(screen.getByRole('button', { name: /detalle/i }));
+    const receipt = await screen.findByRole('region', { name: /comprobante de venta/i });
+    expect(receipt.parentElement).toHaveClass('ticket-ledger-modal');
   });
 
   it('renders sales history list and summary correctly', async () => {
@@ -135,6 +160,203 @@ describe('SalesHistoryScreen', () => {
     await waitFor(() => {
       expect(screen.queryByText(/DETALLE DE VENTA/i)).toBeNull();
     });
+  });
+
+  it('gates adjustment actions by role and submits an accessible partial return', async () => {
+    vi.spyOn(salesApi, 'fetchSales').mockResolvedValueOnce({
+      items: mockSales,
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+    const returnSpy = vi.spyOn(salesApi, 'returnSale').mockResolvedValueOnce({
+      adjustment: {
+        id: 'adj-1',
+        type: 'RETURN',
+        status: 'COMPLETED',
+        reason: 'Producto dañado',
+        totalCents: 150000,
+        refundTender: 'CASH',
+        refundStatus: 'COMPLETED',
+        actor: mockSession.user,
+        createdAt: new Date().toISOString(),
+        items: [],
+      },
+      sale: mockSales[0]!,
+      idempotentReplay: false,
+    });
+    render(
+      <AuthContext.Provider
+        value={{ ...mockAuthContext, session: { ...mockSession, role: 'MANAGER' as const } }}
+      >
+        <SalesHistoryScreen />
+      </AuthContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /detalle/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /devolver artículos/i }));
+    expect(screen.getByRole('dialog', { name: /devolver artículos/i })).toBeDefined();
+    fireEvent.change(screen.getByRole('spinbutton', { name: /cantidad a devolver/i }), {
+      target: { value: '1' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /motivo del ajuste/i }), {
+      target: { value: 'Producto dañado' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /confirmar devolución/i }));
+    await waitFor(() =>
+      expect(returnSpy).toHaveBeenCalledWith(
+        'sale-1',
+        expect.objectContaining({
+          reason: 'Producto dañado',
+          items: [{ saleItemId: 'item-1', quantity: 1 }],
+        })
+      )
+    );
+    const command = returnSpy.mock.calls[0]?.[1];
+    expect(command?.idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+  });
+
+  it('shows complete adjustment audit details to cashiers while keeping actions hidden', async () => {
+    const adjustedSale: SaleResponse = {
+      ...mockSales[0]!,
+      adjustments: [
+        {
+          id: 'adj-1',
+          type: 'RETURN',
+          status: 'PENDING',
+          reason: 'Reintegro a tarjeta',
+          totalCents: 150000,
+          refundTender: 'DEBIT',
+          refundStatus: 'PENDING',
+          actor: { id: 'manager-1', name: 'María Manager', email: 'manager@test.com' },
+          createdAt: '2026-09-19T18:30:00.000Z',
+          items: [
+            {
+              id: 'adj-item-1',
+              saleItemId: 'item-1',
+              productId: 'prod-1',
+              quantity: '1',
+              unitPriceCents: 150000,
+              totalCents: 150000,
+            },
+          ],
+        },
+      ],
+    };
+    vi.spyOn(salesApi, 'fetchSales').mockResolvedValueOnce({
+      items: [adjustedSale],
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+    render(
+      <AuthContext.Provider value={mockAuthContext}>
+        <SalesHistoryScreen />
+      </AuthContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /detalle/i }));
+
+    expect(screen.getByRole('region', { name: /historial de ajustes/i })).toHaveTextContent(
+      'Reintegro a tarjeta'
+    );
+    expect(screen.getByRole('region', { name: /historial de ajustes/i })).toHaveTextContent(
+      'María Manager'
+    );
+    expect(screen.getByRole('region', { name: /historial de ajustes/i })).toHaveTextContent(
+      'Débito'
+    );
+    expect(screen.getByRole('region', { name: /historial de ajustes/i })).toHaveTextContent(
+      'Pendiente manual'
+    );
+    expect(screen.getByRole('region', { name: /historial de ajustes/i })).toHaveTextContent('1');
+    expect(screen.queryByRole('button', { name: /devolver artículos/i })).toBeNull();
+  });
+
+  it('disables returns when no quantity remains eligible', async () => {
+    const fullyReturned: SaleResponse = {
+      ...mockSales[0]!,
+      adjustments: [
+        {
+          id: 'adj-full',
+          type: 'RETURN',
+          status: 'COMPLETED',
+          reason: 'Devuelto',
+          totalCents: 150000,
+          refundTender: 'CASH',
+          refundStatus: 'COMPLETED',
+          actor: mockSession.user,
+          createdAt: '2026-09-19T18:30:00.000Z',
+          items: [
+            {
+              id: 'adj-item-full',
+              saleItemId: 'item-1',
+              productId: 'prod-1',
+              quantity: '1',
+              unitPriceCents: 150000,
+              totalCents: 150000,
+            },
+          ],
+        },
+      ],
+    };
+    vi.spyOn(salesApi, 'fetchSales').mockResolvedValueOnce({
+      items: [fullyReturned],
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+    render(
+      <AuthContext.Provider
+        value={{ ...mockAuthContext, session: { ...mockSession, role: 'MANAGER' as const } }}
+      >
+        <SalesHistoryScreen />
+      </AuthContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /detalle/i }));
+    expect(screen.getByRole('button', { name: /devolver artículos/i })).toBeDisabled();
+  });
+
+  it('does not render return/void actions for a cashier', async () => {
+    vi.spyOn(salesApi, 'fetchSales').mockResolvedValueOnce({
+      items: mockSales,
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+    render(
+      <AuthContext.Provider value={mockAuthContext}>
+        <SalesHistoryScreen />
+      </AuthContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /detalle/i }));
+    expect(screen.queryByRole('button', { name: /devolver artículos/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /anular venta/i })).toBeNull();
+  });
+
+  it('hides adjustment actions behind the rollout kill switch', async () => {
+    vi.stubEnv('VITE_SALES_ADJUSTMENTS_ENABLED', 'false');
+    vi.spyOn(salesApi, 'fetchSales').mockResolvedValueOnce({
+      items: mockSales,
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+    render(
+      <AuthContext.Provider
+        value={{ ...mockAuthContext, session: { ...mockSession, role: 'MANAGER' as const } }}
+      >
+        <SalesHistoryScreen />
+      </AuthContext.Provider>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /detalle/i }));
+    expect(screen.queryByRole('button', { name: /devolver artículos/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /anular venta/i })).toBeNull();
   });
 
   it('renders PENDIENTE LOCAL and FALLIDA LOCAL with lastError and executes retry on REINTENTAR click', async () => {

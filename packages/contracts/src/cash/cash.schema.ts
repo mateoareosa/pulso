@@ -4,7 +4,14 @@ import { parseSalesDateRange } from '../sales/sales.schema.js';
 export const CashShiftStatusSchema = z.enum(['OPEN', 'CLOSED']);
 export type CashShiftStatus = z.infer<typeof CashShiftStatusSchema>;
 
-export const CashMovementTypeSchema = z.enum(['OPENING', 'SALE', 'CASH_IN', 'CASH_OUT', 'CLOSING']);
+export const CashMovementTypeSchema = z.enum([
+  'OPENING',
+  'SALE',
+  'CASH_IN',
+  'CASH_OUT',
+  'CLOSING',
+  'REFUND',
+]);
 export type CashMovementType = z.infer<typeof CashMovementTypeSchema>;
 
 export const OpenCashShiftCommandSchema = z
@@ -24,6 +31,12 @@ export const CloseCashShiftCommandSchema = z
       .number({ invalid_type_error: 'El efectivo contado debe ser un número entero en centavos' })
       .int('El efectivo contado debe ser un número entero en centavos')
       .nonnegative('El efectivo contado debe ser mayor o igual a 0'),
+    motivo: z
+      .string({ invalid_type_error: 'El motivo debe ser texto' })
+      .trim()
+      .min(3, 'El motivo debe tener al menos 3 caracteres')
+      .max(255, 'El motivo no puede exceder 255 caracteres')
+      .optional(),
     idempotencyKey: z.string().uuid('Clave de idempotencia inválida'),
   })
   .strict();
@@ -110,6 +123,7 @@ export const CashMovementResponseSchema = z.object({
   signedAmountCents: z.number().int(),
   reason: z.string().nullable().optional(),
   saleId: z.string().nullable().optional(),
+  purchaseId: z.string().nullable().optional(),
   idempotencyKey: z.string(),
   createdAtUtc: z.string(),
 });
@@ -120,6 +134,8 @@ export const CashShiftSummarySchema = z.object({
   cashSalesAmountCents: z.number().int(),
   cashInAmountCents: z.number().int(),
   cashOutAmountCents: z.number().int(),
+  purchaseAmountCents: z.number().int().optional(),
+  refundAmountCents: z.number().int(),
   expectedAmountCents: z.number().int(),
   movementsCount: z.number().int(),
   salesCount: z.number().int(),

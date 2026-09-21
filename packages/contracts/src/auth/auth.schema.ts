@@ -9,6 +9,18 @@ export type UserStatus = z.infer<typeof UserStatusSchema>;
 export const MembershipStatusSchema = z.enum(['ACTIVE', 'DISABLED']);
 export type MembershipStatus = z.infer<typeof MembershipStatusSchema>;
 
+export const ActionTokenSchema = z
+  .string()
+  .min(43)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/, 'El token de acción es inválido');
+export type ActionToken = z.infer<typeof ActionTokenSchema>;
+
+export const PasswordSchema = z
+  .string()
+  .min(12, 'La contraseña debe tener al menos 12 caracteres')
+  .max(128, 'La contraseña no puede superar los 128 caracteres');
+
 export const RegisterInputSchema = z.object({
   businessName: z
     .string()
@@ -31,10 +43,7 @@ export const RegisterInputSchema = z.object({
     .toLowerCase()
     .email('El formato del correo electrónico es inválido')
     .max(255, 'El correo no puede superar los 255 caracteres'),
-  password: z
-    .string()
-    .min(12, 'La contraseña debe tener al menos 12 caracteres')
-    .max(128, 'La contraseña no puede superar los 128 caracteres'),
+  password: PasswordSchema,
 });
 
 export type RegisterInput = z.infer<typeof RegisterInputSchema>;
@@ -50,7 +59,9 @@ export const LoginInputSchema = z.object({
     .string()
     .min(1, 'La contraseña es requerida')
     .max(128, 'La contraseña no puede superar los 128 caracteres'),
-});
+  tenantId: z.string().trim().min(1).max(191).optional(),
+  locationId: z.string().trim().min(1).max(191).optional(),
+}).strict();
 
 export type LoginInput = z.infer<typeof LoginInputSchema>;
 
@@ -124,3 +135,35 @@ export const CreateLocationInputSchema = z
   .strict();
 
 export type CreateLocationInput = z.infer<typeof CreateLocationInputSchema>;
+
+export const AcceptInvitationInputSchema = z
+  .object({
+    token: ActionTokenSchema,
+    password: PasswordSchema,
+  })
+  .strict();
+export type AcceptInvitationInput = z.infer<typeof AcceptInvitationInputSchema>;
+
+export const ResetPasswordInputSchema = AcceptInvitationInputSchema;
+export type ResetPasswordInput = z.infer<typeof ResetPasswordInputSchema>;
+
+export const ChangePasswordInputSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    password: PasswordSchema,
+  })
+  .strict();
+export type ChangePasswordInput = z.infer<typeof ChangePasswordInputSchema>;
+
+export const MembershipActionTypeSchema = z.enum(['INVITE', 'PASSWORD_RESET']);
+export type MembershipActionType = z.infer<typeof MembershipActionTypeSchema>;
+
+export const ActionPreviewResponseSchema = z
+  .object({
+    type: MembershipActionTypeSchema,
+    tenantName: z.string().min(1).max(100),
+    email: z.string().email(),
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
+export type ActionPreviewResponse = z.infer<typeof ActionPreviewResponseSchema>;

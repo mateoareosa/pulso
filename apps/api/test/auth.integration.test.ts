@@ -5,7 +5,11 @@ import { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module.js';
 import { testPrisma, truncateAllTables } from './setup-test-db.js';
-import { verifyPassword } from '../src/auth/security.utils.js';
+import {
+  generateActionToken,
+  hashActionToken,
+  verifyPassword,
+} from '../src/auth/security.utils.js';
 
 function extractSessionCookie(headers: Record<string, string | string[] | undefined>): string {
   const raw = headers['set-cookie'];
@@ -97,10 +101,10 @@ describe('Auth & Identity Integration with Real PostgreSQL', () => {
       });
       expect(userInDb).not.toBeNull();
       expect(userInDb?.name).toBe('Operador Mostrador');
-      expect(userInDb?.passwordHash.startsWith('$argon2id$')).toBe(true);
+      expect(userInDb?.passwordHash?.startsWith('$argon2id$')).toBe(true);
 
       const isValidPassword = await verifyPassword(
-        userInDb!.passwordHash,
+        userInDb!.passwordHash!,
         'correct horse battery staple'
       );
       expect(isValidPassword).toBe(true);
@@ -253,6 +257,291 @@ describe('Auth & Identity Integration with Real PostgreSQL', () => {
           password: 'passwordSegura1234',
         })
         .expect(401);
+    });
+  });
+
+  describe('versioned access and employee actions', () => {
+    it('invalidates an affected session after its membership access version changes', async () => {
+      const registration = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'Versioned Store',
+          locationName: 'Main',
+          ownerName: 'Owner',
+          email: 'versioned@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      const cookie = extractCookieValue(registration.headers);
+      await testPrisma.tenantMembership.update({
+        where: {
+          tenantId_userId: {
+            tenantId: registration.body.tenant.id,
+            userId: registration.body.user.id,
+          },
+        },
+        data: { accessVersion: { increment: 1 } },
+      });
+
+      await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', [cookie]).expect(401);
+    });
+
+    it('rejects non-owner login without an active assigned location', async () => {
+      const registration = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'Assigned Store',
+          locationName: 'Main',
+          ownerName: 'Cashier',
+          email: 'unassigned@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      await testPrisma.tenantMembership.update({
+        where: {
+          tenantId_userId: {
+            tenantId: registration.body.tenant.id,
+            userId: registration.body.user.id,
+          },
+        },
+        data: { role: 'CASHIER', accessVersion: { increment: 1 } },
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: 'unassigned@example.com', password: 'correct horse battery staple' })
+        .expect(401);
+    });
+
+    it('rejects a session for an inactive location while unrelated sessions remain valid', async () => {
+      const first = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'First Store',
+          locationName: 'Main',
+          ownerName: 'First Owner',
+          email: 'first-owner@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      const second = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'Second Store',
+          locationName: 'Main',
+          ownerName: 'Second Owner',
+          email: 'second-owner@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      await testPrisma.location.update({
+        where: { id: first.body.location.id },
+        data: { isActive: false },
+      });
+
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Cookie', [extractCookieValue(first.headers)])
+        .expect(401);
+      await request(app.getHttpServer())
+        .get('/api/auth/me')
+        .set('Cookie', [extractCookieValue(second.headers)])
+        .expect(200);
+    });
+
+    it('atomically consumes an invitation once and rejects replay', async () => {
+      const owner = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'Invite Store',
+          locationName: 'Main',
+          ownerName: 'Owner',
+          email: 'owner-invite@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      const invitedUser = await testPrisma.user.create({
+        data: {
+          email: 'invitee@example.com',
+          normalizedEmail: 'invitee@example.com',
+          name: 'Invitee',
+          passwordHash: null,
+        },
+      });
+      const membership = await testPrisma.tenantMembership.create({
+        data: {
+          tenantId: owner.body.tenant.id,
+          userId: invitedUser.id,
+          role: 'CASHIER',
+          status: 'INVITED',
+        },
+      });
+      await testPrisma.membershipLocation.create({
+        data: {
+          tenantId: owner.body.tenant.id,
+          membershipId: membership.id,
+          locationId: owner.body.location.id,
+        },
+      });
+      const token = generateActionToken();
+      await testPrisma.membershipActionToken.create({
+        data: {
+          tenantId: owner.body.tenant.id,
+          userId: invitedUser.id,
+          membershipId: membership.id,
+          type: 'INVITE',
+          tokenHash: hashActionToken(token),
+          expiresAt: new Date(Date.now() + 60_000),
+          createdByUserId: owner.body.user.id,
+        },
+      });
+
+      const preview = await request(app.getHttpServer())
+        .post('/api/auth/actions/preview')
+        .send({ token })
+        .expect(200);
+      expect(preview.headers['cache-control']).toBe('no-store');
+      expect(preview.body).toMatchObject({
+        type: 'INVITE',
+        tenantName: 'Invite Store',
+        email: 'invitee@example.com',
+      });
+      await request(app.getHttpServer()).get(`/api/auth/actions/${token}`).expect(404);
+
+      await request(app.getHttpServer())
+        .post('/api/auth/invitations/accept')
+        .send({ token, password: 'invitee secure password' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post('/api/auth/invitations/accept')
+        .send({ token, password: 'another secure password' })
+        .expect(410);
+      expect(
+        await verifyPassword(
+          (await testPrisma.user.findUniqueOrThrow({ where: { id: invitedUser.id } }))
+            .passwordHash!,
+          'invitee secure password'
+        )
+      ).toBe(true);
+    });
+
+    it('rejects an expired action without changing the password or membership', async () => {
+      const owner = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'Expired Store',
+          locationName: 'Main',
+          ownerName: 'Owner',
+          email: 'expired-owner@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      const invitedUser = await testPrisma.user.create({
+        data: {
+          email: 'expired-invitee@example.com',
+          normalizedEmail: 'expired-invitee@example.com',
+          name: 'Invitee',
+          passwordHash: null,
+        },
+      });
+      const membership = await testPrisma.tenantMembership.create({
+        data: {
+          tenantId: owner.body.tenant.id,
+          userId: invitedUser.id,
+          role: 'MANAGER',
+          status: 'INVITED',
+        },
+      });
+      const token = generateActionToken();
+      await testPrisma.membershipActionToken.create({
+        data: {
+          tenantId: owner.body.tenant.id,
+          userId: invitedUser.id,
+          membershipId: membership.id,
+          type: 'INVITE',
+          tokenHash: hashActionToken(token),
+          expiresAt: new Date(Date.now() - 1_000),
+          createdByUserId: owner.body.user.id,
+        },
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/auth/invitations/accept')
+        .send({ token, password: 'new secure password' })
+        .expect(410);
+      const unchanged = await testPrisma.tenantMembership.findUniqueOrThrow({
+        where: { id: membership.id },
+        include: { user: true },
+      });
+      expect(unchanged.status).toBe('INVITED');
+      expect(unchanged.user.passwordHash).toBeNull();
+    });
+
+    it.each([
+      ['/api/auth/invitations/accept', 'rate limited invite password'],
+      ['/api/auth/password/reset', 'rate limited reset password'],
+    ])(
+      'rate limits unauthenticated password actions before processing attempt six at %s',
+      async (path, password) => {
+        const body = { token: generateActionToken(), password };
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await request(app.getHttpServer()).post(path).send(body).expect(401);
+        }
+
+        await request(app.getHttpServer()).post(path).send(body).expect(429);
+      }
+    );
+
+    it('rejects a token whose user does not own its membership without mutating either record', async () => {
+      const owner = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({
+          businessName: 'Binding Store',
+          locationName: 'Main',
+          ownerName: 'Owner',
+          email: 'binding-owner@example.com',
+          password: 'correct horse battery staple',
+        })
+        .expect(201);
+      const otherUser = await testPrisma.user.create({
+        data: {
+          email: 'binding-other@example.com',
+          normalizedEmail: 'binding-other@example.com',
+          name: 'Other',
+          passwordHash: null,
+        },
+      });
+      const membership = await testPrisma.tenantMembership.findUniqueOrThrow({
+        where: {
+          tenantId_userId: {
+            tenantId: owner.body.tenant.id,
+            userId: owner.body.user.id,
+          },
+        },
+      });
+      const token = generateActionToken();
+
+      await expect(
+        testPrisma.membershipActionToken.create({
+          data: {
+            tenantId: owner.body.tenant.id,
+            userId: otherUser.id,
+            membershipId: membership.id,
+            type: 'PASSWORD_RESET',
+            tokenHash: hashActionToken(token),
+            expiresAt: new Date(Date.now() + 60_000),
+            createdByUserId: owner.body.user.id,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'P2003' });
+
+      expect(
+        (await testPrisma.user.findUniqueOrThrow({ where: { id: otherUser.id } })).passwordHash
+      ).toBeNull();
+      expect(
+        (await testPrisma.tenantMembership.findUniqueOrThrow({ where: { id: membership.id } }))
+          .status
+      ).toBe('ACTIVE');
     });
   });
 
@@ -422,7 +711,7 @@ describe('Auth & Identity Integration with Real PostgreSQL', () => {
       await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', [cookie]).expect(401);
     });
 
-    it('rejects /api/auth/me when the location belongs to a different tenant', async () => {
+    it('rejects persisting a session location from a different tenant', async () => {
       // Register Business A
       const regA = await request(app.getHttpServer())
         .post('/api/auth/register')
@@ -450,14 +739,15 @@ describe('Auth & Identity Integration with Real PostgreSQL', () => {
       const cookieA = extractCookieValue(regA.headers);
       const locationBId = regB.body.location.id;
 
-      // Tamper session in database: point Tenant A session to Tenant B's location
-      await testPrisma.session.updateMany({
-        where: { userId: regA.body.user.id },
-        data: { locationId: locationBId },
-      });
+      await expect(
+        testPrisma.session.updateMany({
+          where: { userId: regA.body.user.id },
+          data: { locationId: locationBId },
+        })
+      ).rejects.toMatchObject({ code: 'P2003' });
 
-      // Session must be rejected with 401 due to tenant/location mismatch
-      await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', [cookieA]).expect(401);
+      // The rejected cross-tenant write leaves the original valid session unchanged.
+      await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', [cookieA]).expect(200);
     });
   });
 

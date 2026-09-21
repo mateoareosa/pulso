@@ -5,6 +5,7 @@ import { useCashStore } from '../src/features/cash/store/cash.store';
 import { useSalesStore } from '../src/features/sales/store/sales.store';
 import { AuthContext } from '../src/features/auth/AuthContext';
 import { cashApi } from '../src/features/cash/services/cash-api';
+import { NetworkError } from '../src/services/api-client';
 import type { CashShiftResponse } from '@pulso/contracts';
 
 vi.mock('../src/features/cash/services/cash-api', () => ({
@@ -37,6 +38,7 @@ const mockShift: CashShiftResponse = {
     cashSalesAmountCents: 0,
     cashInAmountCents: 0,
     cashOutAmountCents: 0,
+    refundAmountCents: 0,
     expectedAmountCents: 500000,
     movementsCount: 1,
     salesCount: 0,
@@ -115,6 +117,37 @@ describe('CashScreen Component - Cash Shift UI & Arqueo Flow', () => {
     expect(screen.getByTestId('opening-amount-display')).toBeDefined();
   });
 
+  it('renders loading state and does not show SIN TURNO ABIERTO while isLoadingActive is true', async () => {
+    // Keep fetchActiveShift pending so useEffect doesn't immediately complete
+    vi.mocked(cashApi.fetchActiveShift).mockReturnValue(new Promise(() => {}));
+    useCashStore.setState({ isLoadingActive: true, activeShift: null });
+
+    await renderCashScreen();
+
+    expect(screen.getByTestId('cash-loading-state')).toBeDefined();
+    expect(screen.queryByText(/SIN TURNO ABIERTO/i)).toBeNull();
+    expect(screen.queryByTestId('open-shift-button')).toBeNull();
+  });
+
+  it('displays unconfirmed cached shift warning and blocks sensitive operations when shift is not server confirmed', async () => {
+    // Populate localStorage with cached shift and simulate network failure
+    window.localStorage.setItem('pulso_cached_shift_tenant-1_loc-1', JSON.stringify(mockShift));
+    vi.mocked(cashApi.fetchActiveShift).mockRejectedValue(new NetworkError('Network error'));
+
+    await renderCashScreen();
+
+    expect(screen.getByTestId('cash-unconfirmed-cache-warning')).toBeDefined();
+    expect(screen.getByText(/turno sin confirmar/i)).toBeDefined();
+
+    const cashInBtn = screen.getByTestId('open-cash-in-modal-button');
+    const cashOutBtn = screen.getByTestId('open-cash-out-modal-button');
+    const closeBtn = screen.getByTestId('open-close-shift-modal-button');
+
+    expect(cashInBtn.hasAttribute('disabled')).toBe(true);
+    expect(cashOutBtn.hasAttribute('disabled')).toBe(true);
+    expect(closeBtn.hasAttribute('disabled')).toBe(true);
+  });
+
   it('allows entering initial float and opening cash shift', async () => {
     const openShiftSpy = vi.fn().mockResolvedValue(true);
     useCashStore.setState({ openShift: openShiftSpy });
@@ -150,6 +183,21 @@ describe('CashScreen Component - Cash Shift UI & Arqueo Flow', () => {
     const openBtn = screen.getByTestId('open-shift-button');
     expect(openBtn.hasAttribute('disabled')).toBe(true);
   });
+  it('exposes the active shift as an action-first cash ledger region', async () => {
+    vi.mocked(cashApi.fetchActiveShift).mockResolvedValue(mockShift);
+    useCashStore.setState({ activeShift: mockShift });
+
+    await renderCashScreen();
+
+    const operation = screen.getByRole('region', { name: /operación de caja actual/i });
+    expect(operation).toHaveClass('ticket-ledger-view', 'ticket-ledger-action-first');
+    expect(screen.getByTestId('kpi-expected-amount')).toHaveClass('ticket-ledger-total');
+    expect(screen.getByTestId('open-cash-in-modal-button')).toHaveClass('ticket-ledger-control');
+    expect(screen.getByRole('region', { name: /movimientos del turno/i })).toHaveClass(
+      'ticket-ledger-surface'
+    );
+  });
+
   it('renders CashShiftActiveView with KPI cards and action buttons when shift is active', async () => {
     vi.mocked(cashApi.fetchActiveShift).mockResolvedValue(mockShift);
     useCashStore.setState({ activeShift: mockShift });
@@ -236,7 +284,7 @@ describe('CashScreen Component - Cash Shift UI & Arqueo Flow', () => {
     expect(amountDisplay).toBeDefined();
   });
 
-  it('opens CashShiftCloseModal and allows completing arqueo and closing shift', async () => {
+  it('abre Cerrar caja, muestra el desglose y permite cerrar con conteo exacto', async () => {
     vi.mocked(cashApi.fetchActiveShift).mockResolvedValue(mockShift);
     const closeShiftSpy = vi.fn().mockResolvedValue(true);
     useCashStore.setState({ activeShift: mockShift, closeShift: closeShiftSpy });
@@ -247,17 +295,17 @@ describe('CashScreen Component - Cash Shift UI & Arqueo Flow', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('open-close-shift-modal-button'));
     });
-    expect(screen.getByText(/Cierre y Arqueo de Caja/i)).toBeDefined();
+    expect(screen.getByRole('heading', { name: /Cerrar caja/i })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Copiar monto esperado/i })).toBeNull();
+    expect(screen.getByTestId('close-breakdown').textContent).toContain('Ventas');
+    expect(screen.getByTestId('close-breakdown').textContent).toContain('Compras');
 
-    // Click "Copiar monto esperado" to match exactly ($ 5.000,00)
-    const copyShortcutBtn = screen.getByRole('button', { name: /Copiar monto esperado/i });
-    await act(async () => {
-      fireEvent.click(copyShortcutBtn);
-    });
+    // Ingresar manualmente $ 5.000,00.
+    for (const key of ['5', '0', '0', '0']) fireEvent.click(screen.getByRole('button', { name: key }));
 
-    // Check difference badge displays ARQUEO EXACTO
+    // La diferencia exacta no requiere motivo.
     const diffBadge = screen.getByTestId('close-difference-badge');
-    expect(diffBadge.textContent).toContain('ARQUEO EXACTO');
+    expect(diffBadge.textContent).toContain('SIN DIFERENCIA');
 
     // Confirm checkbox
     const confirmCheckbox = screen.getByTestId('confirm-close-checkbox');
@@ -272,7 +320,32 @@ describe('CashScreen Component - Cash Shift UI & Arqueo Flow', () => {
     });
 
     await waitFor(() => {
-      expect(closeShiftSpy).toHaveBeenCalledWith(500000, {
+      expect(closeShiftSpy).toHaveBeenCalledWith(500000, undefined, {
+        tenantId: 'tenant-1',
+        locationId: 'loc-1',
+      });
+    });
+  });
+
+  it('exige motivo para cerrar con faltante y lo envía sin espacios laterales', async () => {
+    vi.mocked(cashApi.fetchActiveShift).mockResolvedValue(mockShift);
+    const closeShiftSpy = vi.fn().mockResolvedValue(true);
+    useCashStore.setState({ activeShift: mockShift, closeShift: closeShiftSpy });
+
+    await renderCashScreen();
+    fireEvent.click(screen.getByTestId('open-close-shift-modal-button'));
+    fireEvent.click(screen.getByRole('button', { name: '1' }));
+    fireEvent.click(screen.getByTestId('confirm-close-checkbox'));
+
+    expect(screen.getByTestId('submit-close-shift-button').hasAttribute('disabled')).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Motivo del faltante'), {
+      target: { value: '  Diferencia al entregar cambio  ' },
+    });
+    fireEvent.click(screen.getByTestId('submit-close-shift-button'));
+
+    await waitFor(() => {
+      expect(closeShiftSpy).toHaveBeenCalledWith(100, 'Diferencia al entregar cambio', {
         tenantId: 'tenant-1',
         locationId: 'loc-1',
       });
@@ -290,7 +363,12 @@ describe('CashScreen Component - Cash Shift UI & Arqueo Flow', () => {
     };
 
     vi.mocked(cashApi.fetchActiveShift).mockResolvedValue(null);
-    useCashStore.setState({ activeShift: null, lastClosedShift: closedShift });
+    useCashStore.setState({
+      activeShift: null,
+      lastClosedShift: closedShift,
+      activeTenantId: 'tenant-1',
+      activeLocationId: 'loc-1',
+    });
 
     await renderCashScreen();
 

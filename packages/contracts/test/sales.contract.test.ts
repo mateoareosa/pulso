@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   CreateSaleCommandSchema,
+  ReturnSaleCommandSchema,
+  VoidSaleCommandSchema,
   TenderTypeSchema,
   SyncBatchSchema,
   parseSalesDateRange,
@@ -8,6 +10,64 @@ import {
 } from '../src/sales/sales.schema.js';
 
 describe('Sales Contract Validation', () => {
+  describe('sale adjustment commands', () => {
+    it('accepts a partial return with a mandatory reason and idempotency key', () => {
+      const result = ReturnSaleCommandSchema.parse({
+        idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        reason: 'Producto dañado',
+        items: [{ saleItemId: 'item-1', quantity: 1 }],
+        refundTender: 'CASH',
+      });
+
+      expect(result.reason).toBe('Producto dañado');
+      expect(result.items).toEqual([{ saleItemId: 'item-1', quantity: 1 }]);
+    });
+
+    it('accepts non-cash refund tenders for pending manual settlement', () => {
+      const result = ReturnSaleCommandSchema.parse({
+        idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        reason: 'Reintegro a tarjeta',
+        items: [{ saleItemId: 'item-1', quantity: 1 }],
+        refundTender: 'DEBIT',
+      });
+
+      expect(result.refundTender).toBe('DEBIT');
+    });
+
+    it('rejects blank reasons and duplicate lines', () => {
+      expect(() =>
+        ReturnSaleCommandSchema.parse({
+          idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          reason: '   ',
+          items: [
+            { saleItemId: 'item-1', quantity: 1 },
+            { saleItemId: 'item-1', quantity: 1 },
+          ],
+          refundTender: 'CASH',
+        })
+      ).toThrow();
+    });
+
+    it('accepts a full-sale void and rejects client-supplied line items', () => {
+      expect(
+        VoidSaleCommandSchema.parse({
+          idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          reason: 'Venta duplicada',
+        })
+      ).toEqual({
+        idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        reason: 'Venta duplicada',
+      });
+
+      expect(() =>
+        VoidSaleCommandSchema.parse({
+          idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          reason: 'Venta duplicada',
+          items: [{ saleItemId: 'item-1', quantity: 1 }],
+        })
+      ).toThrow();
+    });
+  });
   it('should validate a compliant CreateSaleCommand DTO without tenantId or locationId', () => {
     const validPayload = {
       shiftId: 'shift-789',

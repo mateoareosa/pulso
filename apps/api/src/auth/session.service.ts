@@ -23,17 +23,54 @@ export class SessionService {
    */
   async createSession(
     client: Prisma.TransactionClient | PrismaService,
-    params: { userId: string; tenantId: string; locationId: string }
+    params: {
+      userId: string;
+      tenantId: string;
+      membershipId?: string;
+      locationId: string;
+      credentialVersion?: number;
+      membershipAccessVersion?: number;
+    }
   ): Promise<{ token: string; expiresAt: Date; sessionId: string }> {
     const token = generateSessionToken();
     const tokenHash = hashSessionToken(token);
     const expiresAt = this.calculateExpirationDate();
+    const membership = await client.tenantMembership.findUnique({
+      where: {
+        tenantId_userId: { tenantId: params.tenantId, userId: params.userId },
+      },
+      select: {
+        id: true,
+        role: true,
+        status: true,
+        accessVersion: true,
+        user: { select: { credentialVersion: true, status: true } },
+        locations: { where: { locationId: params.locationId }, select: { id: true } },
+      },
+    });
+    const location = await client.location.findFirst({
+      where: { id: params.locationId, tenantId: params.tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (
+      !membership ||
+      !location ||
+      membership.status !== 'ACTIVE' ||
+      membership.user.status !== 'ACTIVE' ||
+      (params.membershipId && membership.id !== params.membershipId) ||
+      (membership.role !== 'OWNER' && membership.locations.length !== 1)
+    ) {
+      throw new UnauthorizedException('Membresía inválida');
+    }
 
     const session = await client.session.create({
       data: {
         userId: params.userId,
         tenantId: params.tenantId,
+        membershipId: membership.id,
         locationId: params.locationId,
+        credentialVersion: params.credentialVersion ?? membership.user.credentialVersion,
+        membershipAccessVersion: params.membershipAccessVersion ?? membership.accessVersion,
         tokenHash,
         expiresAt,
       },
@@ -59,6 +96,13 @@ export class SessionService {
         user: true,
         tenant: true,
         location: true,
+        membership: {
+          include: {
+            locations: {
+              select: { locationId: true },
+            },
+          },
+        },
       },
     });
 
@@ -90,18 +134,21 @@ export class SessionService {
       );
     }
 
-    // Verify user has an active membership in the session's tenant
-    const membership = await this.prisma.tenantMembership.findUnique({
-      where: {
-        tenantId_userId: {
-          tenantId: session.tenantId,
-          userId: session.userId,
-        },
-      },
-    });
-
-    if (!membership || membership.status !== 'ACTIVE') {
+    const membership = session.membership;
+    if (
+      membership.userId !== session.userId ||
+      membership.status !== 'ACTIVE' ||
+      session.credentialVersion !== session.user.credentialVersion ||
+      session.membershipAccessVersion !== membership.accessVersion
+    ) {
       throw new UnauthorizedException('Membresía inactiva');
+    }
+
+    if (
+      membership.role !== 'OWNER' &&
+      !membership.locations.some((assignment) => assignment.locationId === session.locationId)
+    ) {
+      throw new UnauthorizedException('Sucursal no asignada');
     }
 
     return {

@@ -172,6 +172,7 @@ describe('SalesScreen Operational Flow', () => {
           cashSalesAmountCents: 0,
           cashInAmountCents: 0,
           cashOutAmountCents: 0,
+          refundAmountCents: 0,
           expectedAmountCents: 1000000,
           movementsCount: 1,
           salesCount: 0,

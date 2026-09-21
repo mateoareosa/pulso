@@ -69,6 +69,30 @@ describe('Cash Contracts Validation', () => {
       expect(CloseCashShiftCommandSchema.safeParse(valid).success).toBe(true);
     });
 
+    it('acepta y normaliza un motivo de diferencia significativo', () => {
+      const result = CloseCashShiftCommandSchema.safeParse({
+        countedAmountCents: 2350000,
+        motivo: '  Error al entregar cambio  ',
+        idempotencyKey: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.motivo).toBe('Error al entregar cambio');
+    });
+
+    it('rechaza un motivo vacío, demasiado corto o demasiado largo cuando se informa', () => {
+      const base = {
+        countedAmountCents: 2350000,
+        idempotencyKey: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+      };
+
+      expect(CloseCashShiftCommandSchema.safeParse({ ...base, motivo: '  ' }).success).toBe(false);
+      expect(CloseCashShiftCommandSchema.safeParse({ ...base, motivo: 'ab' }).success).toBe(false);
+      expect(
+        CloseCashShiftCommandSchema.safeParse({ ...base, motivo: 'a'.repeat(256) }).success
+      ).toBe(false);
+    });
+
     it('rejects negative counted amount', () => {
       const invalid = {
         countedAmountCents: -50,

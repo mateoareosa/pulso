@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useCatalogStore, CatalogProductItem } from '../store/catalog.store';
 import { useAuth } from '../../auth/AuthContext';
+import { useSalesStore } from '../../sales/store/sales.store';
 import { catalogApi } from '../services/catalog-api';
 import { normalizeSearchText } from '../../sync/offline-db';
 import type { StockMovementResponse, InventoryMovementType } from '@pulso/contracts';
 
 export function useProductsManagement() {
   const { session } = useAuth();
+  const { connectionStatus } = useSalesStore();
   const {
     products,
     quickProducts,
@@ -78,6 +80,7 @@ export function useProductsManagement() {
           status: targetStatus,
           q: searchFilter.trim() || undefined,
           categoryId: categoryFilter !== 'ALL' ? categoryFilter : undefined,
+          isOffline: connectionStatus === 'offline',
         });
       }
     },
@@ -90,6 +93,7 @@ export function useProductsManagement() {
       statusFilter,
       searchFilter,
       categoryFilter,
+      connectionStatus,
     ]
   );
 
@@ -107,6 +111,7 @@ export function useProductsManagement() {
         status: statusFilter,
         q: searchFilter.trim() || undefined,
         categoryId: categoryFilter !== 'ALL' ? categoryFilter : undefined,
+        isOffline: connectionStatus === 'offline',
       });
     }, 150);
 
@@ -119,6 +124,7 @@ export function useProductsManagement() {
     statusFilter,
     limit,
     loadCatalog,
+    connectionStatus,
   ]);
 
   // Open Create Modal

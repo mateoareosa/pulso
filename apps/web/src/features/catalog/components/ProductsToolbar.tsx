@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconStock, IconPlus, IconSearch } from '@pulso/icons';
+import { IconStock, IconPlus, IconSearch, IconClose } from '@pulso/icons';
 import type { CategoryResponse } from '@pulso/contracts';
 
 export interface ProductsToolbarProps {
@@ -109,7 +109,7 @@ export const ProductsToolbar: React.FC<ProductsToolbarProps> = ({
           alignItems: 'center',
         }}
       >
-        <div style={{ flex: '1 1 240px', position: 'relative' }}>
+        <div className="products-search" style={{ flex: '1 1 240px', position: 'relative' }}>
           <span
             style={{
               position: 'absolute',
@@ -124,12 +124,13 @@ export const ProductsToolbar: React.FC<ProductsToolbarProps> = ({
           </span>
           <input
             type="search"
+            className="products-search__input"
             placeholder="Buscar por nombre, código de barras o SKU..."
             value={searchFilter}
             onChange={(e) => onSearchChange(e.target.value)}
             style={{
               width: '100%',
-              padding: '8px 10px 8px 34px',
+              padding: '8px 40px 8px 34px',
               borderRadius: 'var(--radius-xs)',
               border: '1px solid var(--color-border)',
               backgroundColor: 'var(--color-surface)',
@@ -138,6 +139,14 @@ export const ProductsToolbar: React.FC<ProductsToolbarProps> = ({
               boxSizing: 'border-box',
             }}
           />
+          {searchFilter && <button
+            type="button"
+            className="products-search__clear"
+            aria-label="Limpiar búsqueda de productos"
+            onClick={() => onSearchChange('')}
+          >
+            <IconClose size={14} />
+          </button>}
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

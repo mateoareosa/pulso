@@ -5,6 +5,8 @@ import {
   generateSessionToken,
   hashSessionToken,
   normalizeEmail,
+  generateActionToken,
+  hashActionToken,
 } from '../src/auth/security.utils.js';
 import { isCookieSecure } from '../src/auth/cookie.utils.js';
 
@@ -82,6 +84,23 @@ describe('Security Utilities (RED Phase)', () => {
     it('returns false in test when COOKIE_SECURE=false and true when COOKIE_SECURE=true', () => {
       expect(isCookieSecure('test', 'false')).toBe(false);
       expect(isCookieSecure('test', 'true')).toBe(true);
+    });
+  });
+
+  describe('Employee action tokens', () => {
+    it('generates distinct 256-bit URL-safe opaque tokens', () => {
+      const first = generateActionToken();
+      const second = generateActionToken();
+      expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(second).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(second).not.toBe(first);
+    });
+
+    it('hashes action tokens deterministically without retaining the raw secret', () => {
+      const token = 'A'.repeat(43);
+      expect(hashActionToken(token)).toBe(hashActionToken(token));
+      expect(hashActionToken(token)).toMatch(/^[a-f0-9]{64}$/);
+      expect(hashActionToken(token)).not.toBe(token);
     });
   });
 });

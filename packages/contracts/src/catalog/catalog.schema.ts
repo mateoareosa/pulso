@@ -169,7 +169,12 @@ export const productSearchQuerySchema = z
   .object({
     q: z.string().trim().optional(),
     categoryId: z.string().trim().optional(),
-    barcode: z.string().trim().optional(),
+    barcode: z
+      .string()
+      .trim()
+      .min(1, 'El código de barras no puede estar vacío')
+      .max(64, 'Máximo 64 caracteres')
+      .optional(),
     onlyAvailable: z
       .union([z.boolean(), z.enum(['true', 'false'])])
       .transform((val) => val === true || val === 'true')
@@ -262,3 +267,128 @@ export const paginatedProductsResponseSchema = z.object({
 });
 
 export type PaginatedProductsResponse = z.infer<typeof paginatedProductsResponseSchema>;
+
+// ==========================================
+// BULK PRODUCT IMPORT
+// ==========================================
+
+export const PRODUCT_IMPORT_COLUMNS = [
+  'name',
+  'category',
+  'barcode',
+  'sku',
+  'salePriceCents',
+  'costPriceCents',
+  'unit',
+  'initialStock',
+  'minimumStock',
+  'quickSlot',
+  'isAvailable',
+] as const;
+
+export const productImportColumnSchema = z.enum(PRODUCT_IMPORT_COLUMNS);
+export type ProductImportColumn = z.infer<typeof productImportColumnSchema>;
+
+export const productImportRowSchema = z
+  .object({
+    row: z.number().int().min(2),
+    name: z.string().trim().min(1).max(200),
+    category: z.string().trim().min(1).max(100).nullable().optional(),
+    barcode: z.string().trim().min(1).max(64).nullable().optional(),
+    sku: z.string().trim().min(1).max(64).nullable().optional(),
+    salePriceCents: z.number().int().positive(),
+    costPriceCents: z.number().int().nonnegative().nullable().optional(),
+    unit: z.string().trim().min(1).max(20),
+    initialStock: decimalStringSchema,
+    minimumStock: decimalStringSchema,
+    quickSlot: z.number().int().min(1).max(8).nullable().optional(),
+    isAvailable: z.boolean(),
+  })
+  .strict();
+
+export type ProductImportRow = z.infer<typeof productImportRowSchema>;
+
+export const productImportRowErrorSchema = z
+  .object({
+    row: z.number().int().min(2),
+    field: productImportColumnSchema.optional(),
+    code: z.string().trim().min(1).max(100),
+    message: z.string().trim().min(1).max(500),
+  })
+  .strict();
+
+export type ProductImportRowError = z.infer<typeof productImportRowErrorSchema>;
+
+export const productImportSummarySchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    valid: z.number().int().nonnegative(),
+    invalid: z.number().int().nonnegative(),
+    createdCategories: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((summary, context) => {
+    if (summary.valid + summary.invalid !== summary.total) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'El total debe coincidir con la suma de filas válidas e inválidas',
+        path: ['total'],
+      });
+    }
+  });
+
+export type ProductImportSummary = z.infer<typeof productImportSummarySchema>;
+
+// A stateless preview contains up to 500 normalized rows. Keep the token bounded,
+// but large enough for the worst-case canonical payload defined above.
+export const MAX_PRODUCT_IMPORT_PREVIEW_TOKEN_CHARS = 1_000_000;
+
+export const productImportPreviewResponseSchema = z
+  .object({
+    previewToken: z.string().trim().min(1).max(MAX_PRODUCT_IMPORT_PREVIEW_TOKEN_CHARS),
+    expiresAt: z.string().datetime({ offset: true }),
+    rows: z.array(productImportRowSchema).max(500),
+    errors: z.array(productImportRowErrorSchema),
+    summary: productImportSummarySchema,
+    canCommit: z.boolean(),
+  })
+  .strict()
+  .superRefine((preview, context) => {
+    if (preview.summary.total !== preview.rows.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'El resumen debe corresponder a las filas de la vista previa',
+        path: ['summary', 'total'],
+      });
+    }
+
+    const expectedCanCommit = preview.summary.invalid === 0 && preview.errors.length === 0;
+    if (preview.canCommit !== expectedCanCommit) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'El estado de confirmación no coincide con los errores de la vista previa',
+        path: ['canCommit'],
+      });
+    }
+  });
+
+export type ProductImportPreviewResponse = z.infer<typeof productImportPreviewResponseSchema>;
+
+export const productImportCommitSchema = z
+  .object({
+    previewToken: z.string().trim().min(1).max(MAX_PRODUCT_IMPORT_PREVIEW_TOKEN_CHARS),
+    confirmation: z.literal(true),
+  })
+  .strict();
+
+export type ProductImportCommitCommand = z.infer<typeof productImportCommitSchema>;
+
+export const productImportResultSchema = z
+  .object({
+    importedCount: z.number().int().nonnegative(),
+    categoryCount: z.number().int().nonnegative(),
+    auditId: z.string().trim().min(1),
+  })
+  .strict();
+
+export type ProductImportResult = z.infer<typeof productImportResultSchema>;

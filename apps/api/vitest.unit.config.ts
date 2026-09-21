@@ -2,6 +2,7 @@
 
 export default defineConfig({
   test: {
+    forbidOnly: process.env.CI === 'true',
     globals: true,
     environment: 'node',
     include: ['test/**/*.spec.ts', 'src/**/*.{test,spec}.ts'],

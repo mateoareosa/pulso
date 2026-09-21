@@ -21,6 +21,7 @@ function extractCookieValue(headers: Record<string, string | string[] | undefine
 describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => {
   let app: INestApplication;
   let ownerCookieA: string;
+  let managerCookieA: string;
   let cashierCookieA: string;
   let ownerCookieB: string;
   let tenantAId: string;
@@ -69,12 +70,15 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
         passwordHash: await hashPassword('CashierPass123!'),
       },
     });
-    await testPrisma.tenantMembership.create({
+    const cashierMembership = await testPrisma.tenantMembership.create({
       data: {
         tenantId: tenantAId,
         userId: cashierUser.id,
         role: 'CASHIER',
       },
+    });
+    await testPrisma.membershipLocation.create({
+      data: { tenantId: tenantAId, membershipId: cashierMembership.id, locationId: locationAId },
     });
     const cashierLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
       email: 'cajero.a@pulso.dev',
@@ -82,6 +86,28 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
     });
     expect(cashierLogin.status).toBe(200);
     cashierCookieA = extractCookieValue(cashierLogin.headers);
+
+    // Create Manager in Tenant A
+    const managerUser = await testPrisma.user.create({
+      data: {
+        email: 'encargado.a@pulso.dev',
+        normalizedEmail: 'encargado.a@pulso.dev',
+        name: 'Encargado A',
+        passwordHash: await hashPassword('ManagerPass123!'),
+      },
+    });
+    const managerMembership = await testPrisma.tenantMembership.create({
+      data: { tenantId: tenantAId, userId: managerUser.id, role: 'MANAGER' },
+    });
+    await testPrisma.membershipLocation.create({
+      data: { tenantId: tenantAId, membershipId: managerMembership.id, locationId: locationAId },
+    });
+    const managerLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
+      email: 'encargado.a@pulso.dev',
+      password: 'ManagerPass123!',
+    });
+    expect(managerLogin.status).toBe(200);
+    managerCookieA = extractCookieValue(managerLogin.headers);
 
     // Register Tenant B (Owner)
     const regB = await request(app.getHttpServer()).post('/api/auth/register').send({
@@ -122,6 +148,26 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
 
       const resShifts = await request(app.getHttpServer()).get('/api/cash/shifts');
       expect(resShifts.status).toBe(401);
+
+      const resIn = await request(app.getHttpServer()).post('/api/cash/movements/in').send({
+        amountCents: 1000,
+        reason: 'Sin sesión',
+        idempotencyKey: '00000000-0000-4000-8000-000000000002',
+      });
+      expect(resIn.status).toBe(401);
+
+      const resOut = await request(app.getHttpServer()).post('/api/cash/movements/out').send({
+        amountCents: 1000,
+        reason: 'Sin sesión',
+        idempotencyKey: '00000000-0000-4000-8000-000000000003',
+      });
+      expect(resOut.status).toBe(401);
+
+      const resClose = await request(app.getHttpServer()).post('/api/cash/shifts/close').send({
+        countedAmountCents: 0,
+        idempotencyKey: '00000000-0000-4000-8000-000000000004',
+      });
+      expect(resClose.status).toBe(401);
     });
 
     it('allows CASHIER to get active shift, open, register movements, and close', async () => {
@@ -191,13 +237,149 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
       expect(res.body.message).toContain('Permisos insuficientes');
     });
 
-    it('allows OWNER and MANAGER to query shift history list with pagination and filters', async () => {
+    it('forbids CASHIER from querying a shift history detail with 403 Forbidden', async () => {
+      const opened = await request(app.getHttpServer())
+        .post('/api/cash/shifts/open')
+        .set('Cookie', cashierCookieA)
+        .send({
+          openingAmountCents: 50000,
+          idempotencyKey: '11111111-1111-4111-8111-111111111112',
+        });
+      expect(opened.status).toBe(200);
+
       const res = await request(app.getHttpServer())
+        .get(`/api/cash/shifts/${opened.body.shift.id}`)
+        .set('Cookie', cashierCookieA);
+      expect(res.status).toBe(403);
+      expect(res.body.message).toContain('Permisos insuficientes');
+    });
+
+    it('forbids CASHIER from operating a shift opened by another cashier in the same location', async () => {
+      const secondUser = await testPrisma.user.create({
+        data: {
+          email: 'cajero.segundo@pulso.dev',
+          normalizedEmail: 'cajero.segundo@pulso.dev',
+          name: 'Cajero Segundo',
+          passwordHash: await hashPassword('CashierPass123!'),
+        },
+      });
+      const secondMembership = await testPrisma.tenantMembership.create({
+        data: { tenantId: tenantAId, userId: secondUser.id, role: 'CASHIER' },
+      });
+      await testPrisma.membershipLocation.create({
+        data: {
+          tenantId: tenantAId,
+          membershipId: secondMembership.id,
+          locationId: locationAId,
+        },
+      });
+      const secondLogin = await request(app.getHttpServer()).post('/api/auth/login').send({
+        email: 'cajero.segundo@pulso.dev',
+        password: 'CashierPass123!',
+      });
+      expect(secondLogin.status).toBe(200);
+      const secondCashierCookie = extractCookieValue(secondLogin.headers);
+
+      const opened = await request(app.getHttpServer())
+        .post('/api/cash/shifts/open')
+        .set('Cookie', cashierCookieA)
+        .send({
+          openingAmountCents: 100000,
+          idempotencyKey: '11111111-1111-4111-8111-111111111113',
+        });
+      expect(opened.status).toBe(200);
+
+      const originalCashIn = await request(app.getHttpServer())
+        .post('/api/cash/movements/in')
+        .set('Cookie', cashierCookieA)
+        .send({
+          amountCents: 1000,
+          reason: 'Ingreso del cajero titular',
+          idempotencyKey: '22222222-2222-4222-8222-222222222223',
+        });
+      expect(originalCashIn.status).toBe(200);
+
+      const cashIn = await request(app.getHttpServer())
+        .post('/api/cash/movements/in')
+        .set('Cookie', secondCashierCookie)
+        .send({
+          amountCents: 1000,
+          reason: 'Intento sobre caja ajena',
+          idempotencyKey: '22222222-2222-4222-8222-222222222224',
+        });
+      expect(cashIn.status).toBe(403);
+
+      const replayForeignCashIn = await request(app.getHttpServer())
+        .post('/api/cash/movements/in')
+        .set('Cookie', secondCashierCookie)
+        .send({
+          amountCents: 1000,
+          reason: 'Ingreso del cajero titular',
+          idempotencyKey: '22222222-2222-4222-8222-222222222223',
+        });
+      expect(replayForeignCashIn.status).toBe(403);
+
+      const close = await request(app.getHttpServer())
+        .post('/api/cash/shifts/close')
+        .set('Cookie', secondCashierCookie)
+        .send({
+          countedAmountCents: 100000,
+          idempotencyKey: '44444444-4444-4444-8444-444444444445',
+        });
+      expect(close.status).toBe(403);
+
+      const persisted = await testPrisma.cashShift.findUniqueOrThrow({
+        where: { id: opened.body.shift.id },
+      });
+      expect(persisted.status).toBe('OPEN');
+    });
+
+    it('allows OWNER and MANAGER to query shift history list with pagination and filters', async () => {
+      const ownerRes = await request(app.getHttpServer())
         .get('/api/cash/shifts?page=1&limit=10')
         .set('Cookie', ownerCookieA);
-      expect(res.status).toBe(200);
-      expect(res.body.items).toBeInstanceOf(Array);
-      expect(res.body.total).toBeDefined();
+      expect(ownerRes.status).toBe(200);
+      expect(ownerRes.body.items).toBeInstanceOf(Array);
+      expect(ownerRes.body.total).toBeDefined();
+
+      const managerRes = await request(app.getHttpServer())
+        .get('/api/cash/shifts?page=1&limit=10')
+        .set('Cookie', managerCookieA);
+      expect(managerRes.status).toBe(200);
+      expect(managerRes.body.items).toBeInstanceOf(Array);
+      expect(managerRes.body.total).toBeDefined();
+    });
+
+    it('allows MANAGER to operate a shift opened by a cashier', async () => {
+      const opened = await request(app.getHttpServer())
+        .post('/api/cash/shifts/open')
+        .set('Cookie', cashierCookieA)
+        .send({
+          openingAmountCents: 100000,
+          idempotencyKey: '11111111-1111-4111-8111-111111111114',
+        });
+      expect(opened.status).toBe(200);
+
+      const cashIn = await request(app.getHttpServer())
+        .post('/api/cash/movements/in')
+        .set('Cookie', managerCookieA)
+        .send({
+          amountCents: 5000,
+          reason: 'Supervisión de encargado',
+          idempotencyKey: '22222222-2222-4222-8222-222222222225',
+        });
+      expect(cashIn.status).toBe(200);
+      expect(cashIn.body.shift.id).toBe(opened.body.shift.id);
+
+      const closed = await request(app.getHttpServer())
+        .post('/api/cash/shifts/close')
+        .set('Cookie', managerCookieA)
+        .send({
+          countedAmountCents: 105000,
+          idempotencyKey: '44444444-4444-4444-8444-444444444446',
+        });
+      expect(closed.status).toBe(200);
+      expect(closed.body.shift.closedByUser.email).toBe('encargado.a@pulso.dev');
     });
   });
 
@@ -608,25 +790,76 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
         .set('Cookie', cashierCookieA)
         .send({
           countedAmountCents: 125000,
+          motivo: 'Cambio encontrado después del arqueo',
           idempotencyKey: 'cccc3333-3333-4333-8333-333333333333',
         });
 
       expect(res.status).toBe(200);
       expect(res.body.shift.differenceAmountCents).toBe(5000);
+
+      const cierre = await testPrisma.cashMovement.findFirstOrThrow({
+        where: { shiftId: res.body.shift.id, type: 'CLOSING' },
+      });
+      expect(cierre.reason).toContain('Motivo del sobrante: Cambio encontrado después del arqueo');
+
+      const replay = await request(app.getHttpServer())
+        .post('/api/cash/shifts/close')
+        .set('Cookie', cashierCookieA)
+        .send({
+          countedAmountCents: 125000,
+          motivo: 'Cambio encontrado después del arqueo',
+          idempotencyKey: 'cccc3333-3333-4333-8333-333333333333',
+        });
+      expect(replay.status).toBe(200);
+      expect(replay.body.idempotentReplay).toBe(true);
+
+      const conflicto = await request(app.getHttpServer())
+        .post('/api/cash/shifts/close')
+        .set('Cookie', cashierCookieA)
+        .send({
+          countedAmountCents: 125000,
+          motivo: 'Motivo cambiado después del cierre',
+          idempotencyKey: 'cccc3333-3333-4333-8333-333333333333',
+        });
+      expect(conflicto.status).toBe(409);
     });
 
     it('closes with negative difference (faltante) when counted < expected', async () => {
-      // Counted $1100.00 vs expected $1200.00 -> Faltante: -$100.00 (-10000 cents)
+      // Counted $1199.99 vs expected $1200.00 -> Faltante exacto de un centavo.
       const res = await request(app.getHttpServer())
         .post('/api/cash/shifts/close')
         .set('Cookie', cashierCookieA)
         .send({
-          countedAmountCents: 110000,
+          countedAmountCents: 119999,
+          motivo: 'Entrega de cambio registrada por un monto incorrecto',
           idempotencyKey: 'cccc4444-4444-4444-8444-444444444444',
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.shift.differenceAmountCents).toBe(-10000);
+      expect(res.body.shift.differenceAmountCents).toBe(-1);
+    });
+
+    it('rechaza faltantes y sobrantes sin motivo y conserva el turno abierto', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/cash/shifts/close')
+        .set('Cookie', cashierCookieA)
+        .send({
+          countedAmountCents: 119999,
+          idempotencyKey: 'cccc4444-4444-4444-8444-444444444445',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('motivo');
+
+      const active = await testPrisma.cashShift.findFirstOrThrow({
+        where: { tenantId: tenantAId, locationId: locationAId, status: 'OPEN' },
+      });
+      expect(active.countedAmountCents).toBeNull();
+      expect(
+        await testPrisma.cashMovement.count({
+          where: { shiftId: active.id, type: 'CLOSING' },
+        })
+      ).toBe(0);
     });
 
     it('rejects closing a shift when no shift is open', async () => {
@@ -756,6 +989,7 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
             .set('Cookie', ownerCookieA)
             .send({
               countedAmountCents: 150000,
+              motivo: 'Diferencia posible por venta concurrente',
               idempotencyKey: closeIdemKey,
             }),
         ]);
@@ -1095,12 +1329,25 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
         const cashierUser = await testPrisma.user.findFirstOrThrow({
           where: { email: 'cajero.a@pulso.dev' },
         });
+        const cashierMembership = await testPrisma.tenantMembership.findUniqueOrThrow({
+          where: { tenantId_userId: { tenantId: tenantAId, userId: cashierUser.id } },
+        });
+        await testPrisma.membershipLocation.create({
+          data: {
+            tenantId: tenantAId,
+            membershipId: cashierMembership.id,
+            locationId: locationA2Id,
+          },
+        });
         const tokenCashierLoc2 = 'test-token-cashier-loc2-session';
         await testPrisma.session.create({
           data: {
             userId: cashierUser.id,
             tenantId: tenantAId,
+            membershipId: cashierMembership.id,
             locationId: locationA2Id,
+            credentialVersion: cashierUser.credentialVersion,
+            membershipAccessVersion: cashierMembership.accessVersion,
             tokenHash: createHash('sha256').update(tokenCashierLoc2).digest('hex'),
             expiresAt: new Date(Date.now() + 86400000),
           },
@@ -1111,12 +1358,18 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
         const ownerUser = await testPrisma.user.findFirstOrThrow({
           where: { email: 'dueno.a@pulso.dev' },
         });
+        const ownerMembership = await testPrisma.tenantMembership.findUniqueOrThrow({
+          where: { tenantId_userId: { tenantId: tenantAId, userId: ownerUser.id } },
+        });
         const tokenOwnerLoc2 = 'test-token-owner-loc2-session';
         await testPrisma.session.create({
           data: {
             userId: ownerUser.id,
             tenantId: tenantAId,
+            membershipId: ownerMembership.id,
             locationId: locationA2Id,
+            credentialVersion: ownerUser.credentialVersion,
+            membershipAccessVersion: ownerMembership.accessVersion,
             tokenHash: createHash('sha256').update(tokenOwnerLoc2).digest('hex'),
             expiresAt: new Date(Date.now() + 86400000),
           },
@@ -1161,10 +1414,36 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
         expect(activeLoc2After.body.id).toBe(shiftLoc2Id);
         expect(activeLoc2After.body.openingAmountCents).toBe(250000);
 
-        // 5. User from Location 2 cannot fetch Location 1's shift by ID: returns 404
+        // Client-provided scope identifiers are rejected; the command cannot select a shift.
+        const forgedMovement = await request(app.getHttpServer())
+          .post('/api/cash/movements/in')
+          .set('Cookie', cashierCookieA_Loc2)
+          .send({
+            shiftId: shiftLoc1Id,
+            tenantId: 'client-controlled-tenant',
+            locationId: locationAId,
+            amountCents: 10000,
+            reason: 'Movimiento scoped por sesión',
+            idempotencyKey: 'eeee0003-0000-4000-8000-000000000003',
+          });
+        expect(forgedMovement.status).toBe(400);
+
+        const movementLoc2 = await request(app.getHttpServer())
+          .post('/api/cash/movements/in')
+          .set('Cookie', cashierCookieA_Loc2)
+          .send({
+            amountCents: 10000,
+            reason: 'Movimiento scoped por sesión',
+            idempotencyKey: 'eeee0003-0000-4000-8000-000000000003',
+          });
+        expect(movementLoc2.status).toBe(200);
+        expect(movementLoc2.body.shift.id).toBe(shiftLoc2Id);
+        expect(movementLoc2.body.movement.locationId).toBe(locationA2Id);
+
+        // 5. Authorized history reader from Location 2 cannot fetch Location 1's shift by ID.
         const getShift1FromLoc2 = await request(app.getHttpServer())
           .get(`/api/cash/shifts/${shiftLoc1Id}`)
-          .set('Cookie', cashierCookieA_Loc2);
+          .set('Cookie', ownerCookieA_Loc2);
         expect(getShift1FromLoc2.status).toBe(404);
 
         // 6. User from Location 2 cannot reuse idempotency key used in Location 1: returns 409
@@ -1177,6 +1456,34 @@ describe('Cash, Shifts & Cash Audit Integration Suite (PostgreSQL Real)', () => 
           });
         expect(crossIdemRes.status).toBe(409);
         expect(crossIdemRes.body.message).toContain('otra sucursal');
+
+        const forgedClose = await request(app.getHttpServer())
+          .post('/api/cash/shifts/close')
+          .set('Cookie', cashierCookieA_Loc2)
+          .send({
+            shiftId: shiftLoc1Id,
+            tenantId: 'client-controlled-tenant',
+            locationId: locationAId,
+            countedAmountCents: 260000,
+            idempotencyKey: 'eeee0004-0000-4000-8000-000000000004',
+          });
+        expect(forgedClose.status).toBe(400);
+
+        const closeLoc2 = await request(app.getHttpServer())
+          .post('/api/cash/shifts/close')
+          .set('Cookie', cashierCookieA_Loc2)
+          .send({
+            countedAmountCents: 260000,
+            idempotencyKey: 'eeee0004-0000-4000-8000-000000000004',
+          });
+        expect(closeLoc2.status).toBe(200);
+        expect(closeLoc2.body.shift.id).toBe(shiftLoc2Id);
+        expect(closeLoc2.body.shift.status).toBe('CLOSED');
+
+        const loc1StillOpen = await testPrisma.cashShift.findUniqueOrThrow({
+          where: { id: shiftLoc1Id },
+        });
+        expect(loc1StillOpen.status).toBe('OPEN');
 
         // 7. History queries are strictly filtered by location:
         // Owner in Location 1 sees Location 1 shift

@@ -55,7 +55,7 @@ export const CashShiftClosedSummaryView: React.FC<CashShiftClosedSummaryViewProp
             height: '48px',
             borderRadius: '50%',
             backgroundColor: 'rgba(40, 167, 69, 0.15)',
-            color: 'var(--color-success, #28a745)',
+            color: 'var(--color-success-solid)',
             marginBottom: '12px',
           }}
         >
@@ -86,10 +86,10 @@ export const CashShiftClosedSummaryView: React.FC<CashShiftClosedSummaryViewProp
           justifyContent: 'space-between',
           marginBottom: '20px',
           border: isExact
-            ? '1px solid #28a745'
+            ? '1px solid var(--color-success-solid)'
             : isSobrante
               ? '1px solid #0056b3'
-              : '1px solid #dc3545',
+              : '1px solid var(--color-danger-solid)',
           backgroundColor: isExact
             ? 'rgba(40, 167, 69, 0.12)'
             : isSobrante
@@ -151,7 +151,7 @@ export const CashShiftClosedSummaryView: React.FC<CashShiftClosedSummaryViewProp
             style={{
               fontFamily: 'monospace, var(--font-mono)',
               fontWeight: 700,
-              color: 'var(--color-success, #28a745)',
+              color: 'var(--color-success-solid)',
             }}
           >
             + {Money.fromCents(summary.cashSalesAmountCents).format()}
@@ -175,7 +175,7 @@ export const CashShiftClosedSummaryView: React.FC<CashShiftClosedSummaryViewProp
             style={{
               fontFamily: 'monospace, var(--font-mono)',
               fontWeight: 700,
-              color: 'var(--color-danger, #dc3545)',
+              color: 'var(--color-danger-solid)',
             }}
           >
             - {Money.fromCents(summary.cashOutAmountCents).format()}

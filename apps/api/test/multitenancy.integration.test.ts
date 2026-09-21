@@ -347,11 +347,18 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
         },
       });
 
-      await testPrisma.tenantMembership.create({
+      const cashierMembership = await testPrisma.tenantMembership.create({
         data: {
           tenantId: tenantAId,
           userId: cashierUser.id,
           role: 'CASHIER',
+        },
+      });
+      await testPrisma.membershipLocation.create({
+        data: {
+          tenantId: tenantAId,
+          membershipId: cashierMembership.id,
+          locationId: locationAId,
         },
       });
 
@@ -360,7 +367,10 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
         data: {
           userId: cashierUser.id,
           tenantId: tenantAId,
+          membershipId: cashierMembership.id,
           locationId: locationAId,
+          credentialVersion: cashierUser.credentialVersion,
+          membershipAccessVersion: cashierMembership.accessVersion,
           tokenHash: hashSessionToken(cashierToken),
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
@@ -397,11 +407,18 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
         },
       });
 
-      await testPrisma.tenantMembership.create({
+      const managerMembership = await testPrisma.tenantMembership.create({
         data: {
           tenantId: tenantAId,
           userId: managerUser.id,
           role: 'MANAGER',
+        },
+      });
+      await testPrisma.membershipLocation.create({
+        data: {
+          tenantId: tenantAId,
+          membershipId: managerMembership.id,
+          locationId: locationAId,
         },
       });
 
@@ -410,7 +427,10 @@ describe('Multi-Tenant Isolation & Negative Authorization', () => {
         data: {
           userId: managerUser.id,
           tenantId: tenantAId,
+          membershipId: managerMembership.id,
           locationId: locationAId,
+          credentialVersion: managerUser.credentialVersion,
+          membershipAccessVersion: managerMembership.accessVersion,
           tokenHash: hashSessionToken(managerToken),
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },

@@ -318,7 +318,15 @@ export const useSalesStore = create<SalesState>((set, get) => ({
 
   toggleConnection: () => {
     const current = get().connectionStatus;
-    const next = current === 'online' ? 'offline' : 'online';
+    // The browser's connectivity is authoritative when it is unavailable. In
+    // particular, Playwright (and real network loss) emits `offline` before a
+    // user can click the ribbon; do not let that click immediately toggle the
+    // app back to an impossible online state.
+    const next = navigator.onLine === false
+      ? 'offline'
+      : current === 'online'
+        ? 'offline'
+        : 'online';
     set({ connectionStatus: next });
   },
 

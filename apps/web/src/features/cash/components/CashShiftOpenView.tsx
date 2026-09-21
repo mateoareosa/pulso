@@ -185,8 +185,8 @@ export const CashShiftOpenView: React.FC<CashShiftOpenViewProps> = ({
             role="alert"
             style={{
               backgroundColor: 'rgba(220, 53, 69, 0.12)',
-              color: 'var(--color-danger, #dc3545)',
-              border: '1px solid var(--color-danger, #dc3545)',
+              color: 'var(--color-danger-solid)',
+              border: '1px solid var(--color-danger-solid)',
               borderRadius: 'var(--radius-xs, 4px)',
               padding: '10px 14px',
               fontSize: 'var(--text-xs, 12px)',
@@ -294,7 +294,7 @@ export const CashShiftOpenView: React.FC<CashShiftOpenViewProps> = ({
                 fontWeight: 800,
                 backgroundColor:
                   k === 'C' ? 'rgba(220, 53, 69, 0.08)' : 'var(--color-surface, #fff)',
-                color: k === 'C' ? 'var(--color-danger, #dc3545)' : 'var(--color-ink, #000)',
+                color: k === 'C' ? 'var(--color-danger-solid)' : 'var(--color-ink, #000)',
                 border: '1px solid var(--color-border, #ccc)',
                 borderRadius: 'var(--radius-xs, 4px)',
                 cursor: isBusy ? 'not-allowed' : 'pointer',

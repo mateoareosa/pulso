@@ -4,6 +4,7 @@ import {
   CurrentUserResponse,
   CurrentUserResponseSchema,
 } from '@pulso/contracts';
+import { ActionPreviewResponseSchema, type ActionPreviewResponse } from '@pulso/contracts';
 
 export class ApiError extends Error {
   constructor(
@@ -25,7 +26,7 @@ export class NetworkError extends Error {
 
 export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
-  if (!headers.has('Content-Type') && options.body) {
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -90,5 +91,16 @@ export const apiClient = {
     await apiRequest<{ success: boolean }>('/api/auth/logout', {
       method: 'POST',
     });
+  },
+
+  async previewAction(token: string): Promise<ActionPreviewResponse> {
+    const data = await apiRequest<unknown>('/api/auth/actions/preview', { method: 'POST', body: JSON.stringify({ token }) });
+    return ActionPreviewResponseSchema.parse(data);
+  },
+  async acceptInvitation(token: string, password: string): Promise<void> {
+    await apiRequest('/api/auth/invitations/accept', { method: 'POST', body: JSON.stringify({ token, password }) });
+  },
+  async resetPassword(token: string, password: string): Promise<void> {
+    await apiRequest('/api/auth/password/reset', { method: 'POST', body: JSON.stringify({ token, password }) });
   },
 };

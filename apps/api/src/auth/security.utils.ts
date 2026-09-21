@@ -47,3 +47,13 @@ export function generateSessionToken(): string {
 export function hashSessionToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
+
+/** Generates a 256-bit, URL-safe, opaque one-time action token. */
+export function generateActionToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/** Hashes one-time action tokens so the raw secret is never persisted. */
+export function hashActionToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}

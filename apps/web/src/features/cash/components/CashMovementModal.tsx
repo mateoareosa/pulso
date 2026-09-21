@@ -181,8 +181,8 @@ export const CashMovementModal: React.FC<CashMovementModalProps> = ({
               alignItems: 'center',
               gap: '8px',
               backgroundColor: 'rgba(220, 53, 69, 0.12)',
-              color: 'var(--color-danger, #dc3545)',
-              border: '1px solid var(--color-danger, #dc3545)',
+              color: 'var(--color-danger-solid)',
+              border: '1px solid var(--color-danger-solid)',
               borderRadius: 'var(--radius-xs, 4px)',
               padding: '8px 12px',
               fontSize: 'var(--text-xs, 12px)',
@@ -198,7 +198,7 @@ export const CashMovementModal: React.FC<CashMovementModalProps> = ({
         <div
           style={{
             backgroundColor: 'var(--color-surface, #fff)',
-            border: `2px solid ${isExceeding ? 'var(--color-danger, #dc3545)' : 'var(--color-ink, #000)'}`,
+            border: `2px solid ${isExceeding ? 'var(--color-danger-solid)' : 'var(--color-ink, #000)'}`,
             borderRadius: 'var(--radius-xs, 4px)',
             padding: '10px 14px',
             textAlign: 'right',
@@ -220,7 +220,7 @@ export const CashMovementModal: React.FC<CashMovementModalProps> = ({
               fontFamily: 'monospace, var(--font-mono)',
               fontSize: 'var(--text-xl, 24px)',
               fontWeight: 900,
-              color: isExceeding ? 'var(--color-danger, #dc3545)' : 'var(--color-ink, #000)',
+              color: isExceeding ? 'var(--color-danger-solid)' : 'var(--color-ink, #000)',
             }}
           >
             {Money.fromCents(amountCents).format()}
@@ -330,8 +330,8 @@ export const CashMovementModal: React.FC<CashMovementModalProps> = ({
               fontSize: 'var(--text-sm, 14px)',
               fontWeight: 900,
               backgroundColor: isCashOut
-                ? 'var(--color-danger, #dc3545)'
-                : 'var(--color-success, #28a745)',
+                ? 'var(--color-danger-solid)'
+                : 'var(--color-success-solid)',
               color: '#fff',
               border: 'none',
               borderRadius: 'var(--radius-xs, 4px)',

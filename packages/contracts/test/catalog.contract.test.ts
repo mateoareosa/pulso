@@ -7,6 +7,12 @@ import {
   updateLocationSettingsSchema,
   createStockAdjustmentSchema,
   productSearchQuerySchema,
+  productImportColumnSchema,
+  productImportRowSchema,
+  productImportRowErrorSchema,
+  productImportPreviewResponseSchema,
+  productImportCommitSchema,
+  productImportResultSchema,
 } from '../src/catalog/catalog.schema.js';
 
 describe('Catalog & Inventory Contracts (Zod)', () => {
@@ -263,6 +269,120 @@ describe('Catalog & Inventory Contracts (Zod)', () => {
       expect(productSearchQuerySchema.safeParse({ status: 'ACTIVE' }).success).toBe(true);
       expect(productSearchQuerySchema.safeParse({ status: 'INACTIVE' }).success).toBe(true);
       expect(productSearchQuerySchema.safeParse({ status: 'DELETED' }).success).toBe(false);
+    });
+
+    it('accepts a trimmed exact barcode lookup', () => {
+      const result = productSearchQuerySchema.safeParse({ barcode: '  7791234567890  ' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.barcode).toBe('7791234567890');
+      }
+    });
+
+    it('rejects empty or oversized exact barcode lookups', () => {
+      expect(productSearchQuerySchema.safeParse({ barcode: '   ' }).success).toBe(false);
+      expect(productSearchQuerySchema.safeParse({ barcode: '7'.repeat(65) }).success).toBe(false);
+    });
+  });
+
+  describe('bulk product import contracts', () => {
+    const validRow = {
+      row: 2,
+      name: 'Yerba mate 1 kg',
+      category: 'Almacén',
+      barcode: '7790000000012',
+      sku: 'YERBA-1KG',
+      salePriceCents: 450000,
+      costPriceCents: 310000,
+      unit: 'UNIT',
+      initialStock: '12.0000',
+      minimumStock: '2.0000',
+      quickSlot: 3,
+      isAvailable: true,
+    };
+
+    it('accepts only the canonical product import columns', () => {
+      expect(productImportColumnSchema.parse('name')).toBe('name');
+      expect(productImportColumnSchema.parse('salePriceCents')).toBe('salePriceCents');
+      expect(productImportColumnSchema.safeParse('tenantId').success).toBe(false);
+      expect(productImportColumnSchema.safeParse('locationId').success).toBe(false);
+    });
+
+    it('accepts a normalized preview row and rejects injected scope fields', () => {
+      expect(productImportRowSchema.parse(validRow)).toEqual(validRow);
+      expect(
+        productImportRowSchema.safeParse({ ...validRow, tenantId: 'tenant-injected' }).success
+      ).toBe(false);
+    });
+
+    it('accepts deterministic row errors and rejects invalid row numbers', () => {
+      const error = {
+        row: 4,
+        field: 'salePriceCents' as const,
+        code: 'INVALID_PRICE',
+        message: 'El precio de venta debe ser positivo',
+      };
+
+      expect(productImportRowErrorSchema.parse(error)).toEqual(error);
+      expect(productImportRowErrorSchema.safeParse({ ...error, row: 1 }).success).toBe(false);
+    });
+
+    it('validates preview summary consistency and commit eligibility', () => {
+      const preview = {
+        previewToken: 'signed-preview-token',
+        expiresAt: '2026-09-20T20:00:00.000Z',
+        rows: [validRow],
+        errors: [],
+        summary: { total: 1, valid: 1, invalid: 0, createdCategories: 1 },
+        canCommit: true,
+      };
+
+      expect(productImportPreviewResponseSchema.parse(preview)).toEqual(preview);
+      expect(
+        productImportPreviewResponseSchema.safeParse({
+          ...preview,
+          errors: [
+            {
+              row: 2,
+              field: 'salePriceCents',
+              code: 'INVALID_PRICE',
+              message: 'El precio es inválido',
+            },
+          ],
+          summary: { ...preview.summary, valid: 0, invalid: 1 },
+          canCommit: false,
+        }).success
+      ).toBe(true);
+      expect(
+        productImportPreviewResponseSchema.safeParse({
+          ...preview,
+          summary: { ...preview.summary, total: 2 },
+        }).success
+      ).toBe(false);
+    });
+
+    it('requires explicit confirmation and validates the import result', () => {
+      expect(
+        productImportCommitSchema.parse({
+          previewToken: 'signed-preview-token',
+          confirmation: true,
+        })
+      ).toEqual({ previewToken: 'signed-preview-token', confirmation: true });
+      expect(
+        productImportCommitSchema.safeParse({
+          previewToken: 'signed-preview-token',
+          confirmation: false,
+        }).success
+      ).toBe(false);
+
+      expect(
+        productImportResultSchema.parse({
+          importedCount: 1,
+          categoryCount: 1,
+          auditId: 'audit-1',
+        })
+      ).toEqual({ importedCount: 1, categoryCount: 1, auditId: 'audit-1' });
     });
   });
 });

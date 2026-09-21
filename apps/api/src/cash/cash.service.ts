@@ -35,6 +35,7 @@ export class CashService {
    * Returns null if no shift is currently open.
    */
   async getActiveShift(session: SessionContext): Promise<CashShiftResponse | null> {
+    this.assertOperationalRole(session);
     if (!session?.tenantId || !session?.locationId) {
       throw new BadRequestException('Contexto de sesión con tenantId y locationId es obligatorio.');
     }
@@ -74,6 +75,7 @@ export class CashService {
     command: OpenCashShiftCommand,
     session: SessionContext
   ): Promise<{ success: boolean; shift: CashShiftResponse; idempotentReplay: boolean }> {
+    this.assertOperationalRole(session);
     if (!session?.tenantId || !session?.locationId) {
       throw new BadRequestException('Contexto de sesión con tenantId y locationId es obligatorio.');
     }
@@ -106,6 +108,7 @@ export class CashService {
     });
 
     if (existingMovement) {
+      this.assertCanOperateShift(session, existingMovement.shift.openedByUserId);
       if (
         existingMovement.type !== 'OPENING' ||
         existingMovement.amountCents !== openingAmountCents
@@ -171,6 +174,7 @@ export class CashService {
             });
 
             if (inTxExisting) {
+              this.assertCanOperateShift(session, inTxExisting.shift.openedByUserId);
               if (inTxExisting.locationId !== locationId) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
@@ -271,6 +275,7 @@ export class CashService {
             });
 
             if (replay) {
+              this.assertCanOperateShift(session, replay.shift.openedByUserId);
               if (replay.locationId !== locationId) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
@@ -322,6 +327,7 @@ export class CashService {
     shift: CashShiftResponse;
     idempotentReplay: boolean;
   }> {
+    this.assertOperationalRole(session);
     if (!session?.tenantId || !session?.locationId) {
       throw new BadRequestException('Contexto de sesión con tenantId y locationId es obligatorio.');
     }
@@ -355,6 +361,7 @@ export class CashService {
     });
 
     if (existingMovement) {
+      this.assertCanOperateShift(session, existingMovement.shift.openedByUserId);
       if (existingMovement.locationId !== locationId) {
         throw new ConflictException(
           'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
@@ -396,6 +403,8 @@ export class CashService {
               );
             }
 
+            this.assertCanOperateShift(session, activeShift.openedByUserId);
+
             // In-tx idempotency check
             const inTxMovement = await tx.cashMovement.findUnique({
               where: {
@@ -422,6 +431,7 @@ export class CashService {
             });
 
             if (inTxMovement) {
+              this.assertCanOperateShift(session, inTxMovement.shift.openedByUserId);
               if (inTxMovement.locationId !== locationId) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
@@ -550,6 +560,7 @@ export class CashService {
             });
 
             if (replay) {
+              this.assertCanOperateShift(session, replay.shift.openedByUserId);
               if (replay.locationId !== locationId) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
@@ -599,12 +610,14 @@ export class CashService {
     command: CloseCashShiftCommand,
     session: SessionContext
   ): Promise<{ success: boolean; shift: CashShiftResponse; idempotentReplay: boolean }> {
+    this.assertOperationalRole(session);
     if (!session?.tenantId || !session?.locationId) {
       throw new BadRequestException('Contexto de sesión con tenantId y locationId es obligatorio.');
     }
 
     const { tenantId, locationId, userId } = session;
-    const { countedAmountCents, idempotencyKey } = command;
+    const { countedAmountCents, motivo, idempotencyKey } = command;
+    const motivoNormalizado = motivo?.trim();
 
     // Fast path: Check idempotency record before transaction
     const existingClosingMovement = await this.prisma.cashMovement.findUnique({
@@ -631,14 +644,14 @@ export class CashService {
     });
 
     if (existingClosingMovement) {
+      this.assertCanOperateShift(session, existingClosingMovement.shift.openedByUserId);
       if (existingClosingMovement.locationId !== locationId) {
         throw new ConflictException(
           'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
         );
       }
       if (
-        existingClosingMovement.type !== 'CLOSING' ||
-        existingClosingMovement.shift.countedAmountCents !== countedAmountCents
+        !this.isSameClosingCommand(existingClosingMovement, countedAmountCents, motivoNormalizado)
       ) {
         throw new ConflictException(
           'La clave de idempotencia ya fue utilizada con un conteo o cierre diferente.'
@@ -670,6 +683,8 @@ export class CashService {
               );
             }
 
+            this.assertCanOperateShift(session, activeShift.openedByUserId);
+
             // In-tx idempotency check
             const inTxClosing = await tx.cashMovement.findUnique({
               where: {
@@ -695,15 +710,13 @@ export class CashService {
             });
 
             if (inTxClosing) {
+              this.assertCanOperateShift(session, inTxClosing.shift.openedByUserId);
               if (inTxClosing.locationId !== locationId) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
                 );
               }
-              if (
-                inTxClosing.type !== 'CLOSING' ||
-                inTxClosing.shift.countedAmountCents !== countedAmountCents
-              ) {
+              if (!this.isSameClosingCommand(inTxClosing, countedAmountCents, motivoNormalizado)) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada con un conteo o cierre diferente.'
                 );
@@ -732,10 +745,24 @@ export class CashService {
               .filter((m) => m.type === 'CASH_OUT')
               .reduce((sum, m) => sum + m.amountCents, 0);
 
+            const refunds = movements
+              .filter((m) => m.type === 'REFUND')
+              .reduce((sum, m) => sum + m.amountCents, 0);
+
             const expectedAmountCents =
-              activeShift.openingAmountCents + cashSales + cashIn - cashOut;
+              activeShift.openingAmountCents + cashSales + cashIn - cashOut - refunds;
 
             const differenceAmountCents = countedAmountCents - expectedAmountCents;
+            if (
+              differenceAmountCents !== 0 &&
+              (!motivoNormalizado || motivoNormalizado.length < 3 || motivoNormalizado.length > 255)
+            ) {
+              throw new BadRequestException(
+                differenceAmountCents < 0
+                  ? 'El motivo del faltante es obligatorio.'
+                  : 'El motivo del sobrante es obligatorio.'
+              );
+            }
             const now = new Date();
 
             // CAS update with version
@@ -776,11 +803,12 @@ export class CashService {
                 type: 'CLOSING',
                 amountCents: countedAmountCents,
                 signedAmountCents: 0,
-                reason: `Cierre de turno. Esperado: $${(expectedAmountCents / 100).toFixed(
-                  2
-                )}, Contado: $${(countedAmountCents / 100).toFixed(2)}, Diferencia: $${(
-                  differenceAmountCents / 100
-                ).toFixed(2)}`,
+                reason: this.buildClosingReason(
+                  expectedAmountCents,
+                  countedAmountCents,
+                  differenceAmountCents,
+                  motivoNormalizado
+                ),
                 idempotencyKey,
                 createdAtUtc: now,
               },
@@ -841,15 +869,13 @@ export class CashService {
             });
 
             if (replay) {
+              this.assertCanOperateShift(session, replay.shift.openedByUserId);
               if (replay.locationId !== locationId) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada en otra sucursal del comercio.'
                 );
               }
-              if (
-                replay.type !== 'CLOSING' ||
-                replay.shift.countedAmountCents !== countedAmountCents
-              ) {
+              if (!this.isSameClosingCommand(replay, countedAmountCents, motivoNormalizado)) {
                 throw new ConflictException(
                   'La clave de idempotencia ya fue utilizada con un conteo o cierre diferente.'
                 );
@@ -876,6 +902,58 @@ export class CashService {
     throw new BadRequestException('No se pudo cerrar el turno debido a contención concurrente.');
   }
 
+  private buildClosingReason(
+    expectedAmountCents: number,
+    countedAmountCents: number,
+    differenceAmountCents: number,
+    motivo?: string
+  ): string {
+    const resumen = `Cierre de turno. Esperado: $${(expectedAmountCents / 100).toFixed(
+      2
+    )}, Contado: $${(countedAmountCents / 100).toFixed(2)}, Diferencia: $${(
+      differenceAmountCents / 100
+    ).toFixed(2)}`;
+
+    if (differenceAmountCents === 0) return resumen;
+
+    const tipoDiferencia = differenceAmountCents < 0 ? 'faltante' : 'sobrante';
+    return `${resumen}. Motivo del ${tipoDiferencia}: ${motivo}`;
+  }
+
+  private isSameClosingCommand(
+    movement: {
+      type: string;
+      reason: string | null;
+      shift: {
+        expectedAmountCents: number | null;
+        countedAmountCents: number | null;
+        differenceAmountCents: number | null;
+      };
+    },
+    countedAmountCents: number,
+    motivo?: string
+  ): boolean {
+    const { shift } = movement;
+    if (
+      movement.type !== 'CLOSING' ||
+      shift.expectedAmountCents === null ||
+      shift.countedAmountCents !== countedAmountCents ||
+      shift.differenceAmountCents === null
+    ) {
+      return false;
+    }
+
+    return (
+      movement.reason ===
+      this.buildClosingReason(
+        shift.expectedAmountCents,
+        countedAmountCents,
+        shift.differenceAmountCents,
+        motivo
+      )
+    );
+  }
+
   /**
    * List shifts for the location with pagination and date filters.
    * Accessible to OWNER and MANAGER.
@@ -884,6 +962,7 @@ export class CashService {
     session: SessionContext,
     query: QueryCashShifts
   ): Promise<PaginatedCashShiftsResponse> {
+    this.assertHistoryRole(session);
     if (!session?.tenantId || !session?.locationId) {
       throw new BadRequestException('Contexto de sesión con tenantId y locationId es obligatorio.');
     }
@@ -939,9 +1018,10 @@ export class CashService {
 
   /**
    * Get single shift detail by ID with isolation.
-   * Accessible to OWNER, MANAGER, or CASHIER (for their active/own shift).
+   * Accessible to OWNER or MANAGER.
    */
   async getShiftById(session: SessionContext, id: string): Promise<CashShiftResponse> {
+    this.assertHistoryRole(session);
     if (!session?.tenantId || !session?.locationId) {
       throw new BadRequestException('Contexto de sesión con tenantId y locationId es obligatorio.');
     }
@@ -968,16 +1048,26 @@ export class CashService {
       throw new NotFoundException('Turno de caja no encontrado.');
     }
 
-    // Cashier can only view the active shift or a shift they opened
-    if (
-      session.role === 'CASHIER' &&
-      shift.status !== 'OPEN' &&
-      shift.openedByUserId !== session.userId
-    ) {
-      throw new ForbiddenException('Permisos insuficientes para consultar este turno histórico.');
-    }
-
     return this.mapShiftToResponse(shift);
+  }
+
+  private assertOperationalRole(session: SessionContext): void {
+    if (!session || !['OWNER', 'MANAGER', 'CASHIER'].includes(session.role)) {
+      throw new ForbiddenException('Permisos insuficientes para realizar esta operación');
+    }
+  }
+
+  private assertHistoryRole(session: SessionContext): void {
+    if (!session || !['OWNER', 'MANAGER'].includes(session.role)) {
+      throw new ForbiddenException('Permisos insuficientes para consultar el historial de caja');
+    }
+  }
+
+  private assertCanOperateShift(session: SessionContext, openedByUserId: string): void {
+    this.assertOperationalRole(session);
+    if (session.role === 'CASHIER' && openedByUserId !== session.userId) {
+      throw new ForbiddenException('El cajero solo puede operar el turno de caja que abrió');
+    }
   }
 
   /**
@@ -998,8 +1088,20 @@ export class CashService {
       .filter((m) => m.type === 'CASH_OUT')
       .reduce((sum, m) => sum + m.amountCents, 0);
 
+    const purchaseAmountCents = movements
+      .filter((m) => m.type === 'CASH_OUT' && m.purchaseId)
+      .reduce((sum, m) => sum + m.amountCents, 0);
+
+    const refundAmountCents = movements
+      .filter((m) => m.type === 'REFUND')
+      .reduce((sum, m) => sum + m.amountCents, 0);
+
     const expectedAmountCents =
-      shift.openingAmountCents + cashSalesAmountCents + cashInAmountCents - cashOutAmountCents;
+      shift.openingAmountCents +
+      cashSalesAmountCents +
+      cashInAmountCents -
+      cashOutAmountCents -
+      refundAmountCents;
 
     const salesCount = movements.filter((m) => m.type === 'SALE').length;
 
@@ -1024,6 +1126,8 @@ export class CashService {
         cashSalesAmountCents,
         cashInAmountCents,
         cashOutAmountCents,
+        purchaseAmountCents,
+        refundAmountCents,
         expectedAmountCents,
         movementsCount: movements.length,
         salesCount,
@@ -1049,6 +1153,7 @@ export class CashService {
       signedAmountCents: m.signedAmountCents,
       reason: m.reason,
       saleId: m.saleId,
+      purchaseId: m.purchaseId,
       idempotencyKey: m.idempotencyKey,
       createdAtUtc: m.createdAtUtc.toISOString(),
     };

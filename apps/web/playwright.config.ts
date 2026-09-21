@@ -26,9 +26,9 @@ export default defineConfig({
   webServer: [
     {
       command:
-        'node ../../scripts/prepare-test-db.js && pnpm --filter @pulso/api exec tsx src/main.ts',
+        'node ../../scripts/prepare-test-db.js && node ../../node_modules/.pnpm/node_modules/tsx/dist/cli.mjs ../api/src/main.ts',
       url: 'http://localhost:4100/api/health',
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 60000,
       env: {
         DATABASE_URL:
@@ -36,12 +36,14 @@ export default defineConfig({
           'postgresql://pulso:pulso_test_password@localhost:5433/pulso_test?schema=public',
         NODE_ENV: 'test',
         PORT: '4100',
+        TSX_TSCONFIG_PATH: '../api/tsconfig.json',
       },
     },
     {
-      command: 'pnpm build && pnpm preview --port 4173',
+      command:
+        'node ../../node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/bin/tsc --noEmit && node ../../node_modules/.pnpm/vite@6.4.3_@types+node@22.2_a1dcf09cab93b77044d030c2ef0f7a7b/node_modules/vite/bin/vite.js build && node ../../node_modules/.pnpm/vite@6.4.3_@types+node@22.2_a1dcf09cab93b77044d030c2ef0f7a7b/node_modules/vite/bin/vite.js preview --port 4173',
       url: 'http://localhost:4173',
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 60000,
       env: {
         API_URL: 'http://localhost:4100',

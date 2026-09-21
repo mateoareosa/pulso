@@ -8,6 +8,9 @@ import { SalesModule } from './sales/sales.module.js';
 import { SyncModule } from './sync/sync.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { CashModule } from './cash/cash.module.js';
+import { SuppliersModule } from './suppliers/suppliers.module.js';
+import { PurchasesModule } from './purchases/purchases.module.js';
+import { EmployeesModule } from './employees/employees.module.js';
 import { TestResetModule } from './test-utils/test-reset.module.js';
 
 import { APP_GUARD } from '@nestjs/core';
@@ -23,6 +26,9 @@ const dynamicImports = [
   SyncModule,
   CatalogModule,
   CashModule,
+  SuppliersModule,
+  PurchasesModule,
+  EmployeesModule,
   ...(process.env.NODE_ENV === 'test' ? [TestResetModule] : []),
 ];
 

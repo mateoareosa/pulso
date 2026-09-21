@@ -4,6 +4,7 @@ import { apiClient, ApiError, NetworkError } from '../../services/api-client';
 import { useCatalogStore } from '../catalog/store/catalog.store';
 import { useSalesStore } from '../sales/store/sales.store';
 import { useCashStore } from '../cash/store/cash.store';
+import { usePurchasesStore } from '../purchases/store/purchases.store';
 import { offlineDb } from '../sync/offline-db';
 
 export type AuthStatus = 'INITIAL_CHECK' | 'AUTHENTICATED' | 'UNAUTHENTICATED' | 'NETWORK_ERROR';
@@ -39,11 +40,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (err instanceof ApiError && err.status === 401) {
         useSalesStore.getState().clearSalesSession();
         useCashStore.getState().clearCashSession();
+        usePurchasesStore.getState().clearPurchasesSession();
         setSession(null);
         setStatus('UNAUTHENTICATED');
       } else {
         useSalesStore.getState().clearSalesSession();
         useCashStore.getState().clearCashSession();
+        usePurchasesStore.getState().clearPurchasesSession();
         setSession(null);
         setStatus('UNAUTHENTICATED');
       }
@@ -58,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setErrorMessage(null);
     useSalesStore.getState().clearSalesSession();
     useCashStore.getState().clearCashSession();
+    usePurchasesStore.getState().clearPurchasesSession();
     const data = await apiClient.login(credentials);
     setSession(data);
     setStatus('AUTHENTICATED');
@@ -67,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setErrorMessage(null);
     useSalesStore.getState().clearSalesSession();
     useCashStore.getState().clearCashSession();
+    usePurchasesStore.getState().clearPurchasesSession();
     const data = await apiClient.register(input);
     setSession(data);
     setStatus('AUTHENTICATED');
@@ -76,6 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useCatalogStore.getState().clearCatalog();
     useSalesStore.getState().clearSalesSession();
     useCashStore.getState().clearCashSession();
+    usePurchasesStore.getState().clearPurchasesSession();
     const clearDbPromise = offlineDb.clearCachedCatalog().catch(() => {});
 
     try {

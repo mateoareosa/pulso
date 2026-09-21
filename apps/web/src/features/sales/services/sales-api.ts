@@ -7,6 +7,7 @@ import type {
   SyncBatch,
   SyncBatchResponse,
   SyncBatchResult,
+  SaleAdjustmentResponse,
 } from '@pulso/contracts';
 
 export type { SyncBatchResponse, SyncBatchResult };
@@ -42,6 +43,33 @@ export const salesApi = {
 
   async fetchSaleById(id: string): Promise<SaleResponse> {
     return await apiRequest<SaleResponse>(`/api/sales/${encodeURIComponent(id)}`);
+  },
+
+  async returnSale(
+    id: string,
+    command: {
+      idempotencyKey: string;
+      reason: string;
+      items: Array<{ saleItemId: string; quantity: number }>;
+    }
+  ): Promise<SaleAdjustmentResponse> {
+    return await apiRequest<SaleAdjustmentResponse>(
+      `/api/sales/${encodeURIComponent(id)}/returns`,
+      {
+        method: 'POST',
+        body: JSON.stringify(command),
+      }
+    );
+  },
+
+  async voidSale(
+    id: string,
+    command: { idempotencyKey: string; reason: string }
+  ): Promise<SaleAdjustmentResponse> {
+    return await apiRequest<SaleAdjustmentResponse>(`/api/sales/${encodeURIComponent(id)}/void`, {
+      method: 'POST',
+      body: JSON.stringify(command),
+    });
   },
 
   async syncBatch(batch: SyncBatch): Promise<SyncBatchResponse> {

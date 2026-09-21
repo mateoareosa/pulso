@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useProductsManagement } from '../hooks/useProductsManagement';
 import { ProductsToolbar } from './ProductsToolbar';
 import { QuickSlotsRibbon } from './QuickSlotsRibbon';
@@ -6,9 +6,11 @@ import { ProductsTable } from './ProductsTable';
 import { ProductFormDialog } from './ProductFormDialog';
 import { StockAdjustmentDialog } from './StockAdjustmentDialog';
 import { InventoryHistoryDialog } from './InventoryHistoryDialog';
+import { ProductImportPanel } from './ProductImportPanel';
 
 export const ProductsScreen: React.FC = () => {
   const m = useProductsManagement();
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   return (
     <div
@@ -32,6 +34,8 @@ export const ProductsScreen: React.FC = () => {
         onStatusChange={m.setStatusFilter}
         onOpenCreate={m.handleOpenCreate}
       />
+
+      <ProductImportPanel isOpen={isImportOpen} onOpen={() => setIsImportOpen(true)} onClose={() => setIsImportOpen(false)} onCommitted={() => { void m.refreshCatalog(); }} />
 
       <QuickSlotsRibbon
         products={m.quickProducts}

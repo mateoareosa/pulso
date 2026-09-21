@@ -62,6 +62,12 @@ export const IconStock: React.FC<IconProps> = ({ size = 20, className = '', ...p
   </svg>
 );
 
+export const IconUser: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className} {...props}>
+    <path fillRule="evenodd" clipRule="evenodd" d="M12 3a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 21a8 8 0 0 1 16 0H4zm2.2-2h11.6a6 6 0 0 0-11.6 0z" />
+  </svg>
+);
+
 export const IconAlert: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
   <svg
     width={size}
@@ -291,6 +297,25 @@ export const IconHistory: React.FC<IconProps> = ({ size = 20, className = '', ..
       fillRule="evenodd"
       clipRule="evenodd"
       d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"
+    />
+  </svg>
+);
+
+export const IconPurchase: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    className={className}
+    {...props}
+  >
+    {/* Stenciled cargo box with reception arrow */}
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5v-2l-10 5-10-5v2zm0-5 10 5 10-5V10l-10 5-10-5v2z"
     />
   </svg>
 );

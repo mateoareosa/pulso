@@ -24,7 +24,8 @@ import {
 } from '@pulso/contracts';
 
 @Controller('cash')
-@UseGuards(SessionAuthGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles('OWNER', 'MANAGER', 'CASHIER')
 export class CashController {
   constructor(@Inject(CashService) private readonly cashService: CashService) {}
 
@@ -94,7 +95,6 @@ export class CashController {
   }
 
   @Get('shifts')
-  @UseGuards(RolesGuard)
   @Roles('OWNER', 'MANAGER')
   async getShifts(@Query() query: unknown, @CurrentSession() session: SessionContext) {
     const parseResult = QueryCashShiftsSchema.safeParse(query);
@@ -110,6 +110,7 @@ export class CashController {
   }
 
   @Get('shifts/:id')
+  @Roles('OWNER', 'MANAGER')
   async getShiftById(@Param('id') id: string, @CurrentSession() session: SessionContext) {
     return await this.cashService.getShiftById(session, id);
   }

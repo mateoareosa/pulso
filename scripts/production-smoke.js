@@ -144,8 +144,17 @@ async function runProductionSmoke() {
     }
     console.log('[Smoke Test] 6. /api/health responded HTTP 200 OK.');
 
+    const readinessRes = await fetch(`http://127.0.0.1:${smokePort}/api/health/ready`);
+    const readinessBody = await readinessRes.json();
+    if (readinessRes.status !== 200 || readinessBody?.status !== 'ready') {
+      throw new Error(
+        `Readiness probe failed with HTTP ${readinessRes.status}.\nLogs:\n${serverLogs}\nErrors:\n${serverErrors}`
+      );
+    }
+    console.log('[Smoke Test] 7. /api/health/ready confirmed database connectivity.');
+
     // Step 5: Verify Nest DI providers (OriginValidationGuard and RateLimiterService) via mutation
-    console.log('[Smoke Test] 7. Testing state-mutating endpoint under production guard...');
+    console.log('[Smoke Test] 8. Testing state-mutating endpoint under production guard...');
     const mutationRes = await fetch(`http://127.0.0.1:${smokePort}/api/auth/login`, {
       method: 'POST',
       headers: {

@@ -1,4 +1,17 @@
-import { Controller, Post, Get, Body, Req, Res, HttpCode, UseGuards, Inject } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Res,
+  HttpCode,
+  UseGuards,
+  Inject,
+  Header,
+} from '@nestjs/common';
+import { ActionTokenSchema } from '@pulso/contracts';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
@@ -67,6 +80,48 @@ export class AuthController {
       role: session.role,
       expiresAt: session.expiresAt,
     };
+  }
+
+  @Post('actions/preview')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  async previewAction(@Body() body: unknown) {
+    const parsed = ActionTokenSchema.safeParse(
+      body && typeof body === 'object' && 'token' in body ? body.token : undefined
+    );
+    if (!parsed.success) throw new BadRequestException('Token de acción inválido');
+    return this.authService.previewAction(parsed.data);
+  }
+
+  @Post('invitations/accept')
+  @HttpCode(200)
+  async acceptInvitation(@Req() req: Request, @Body() body: unknown) {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    this.rateLimiter.checkLimit(`action:invite:${ip}`, 5, 60_000);
+    await this.authService.acceptInvitation(body);
+    return { success: true };
+  }
+
+  @Post('password/reset')
+  @HttpCode(200)
+  async resetPassword(@Req() req: Request, @Body() body: unknown) {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    this.rateLimiter.checkLimit(`action:password-reset:${ip}`, 5, 60_000);
+    await this.authService.resetPassword(body);
+    return { success: true };
+  }
+
+  @Post('password/change')
+  @UseGuards(SessionAuthGuard)
+  @HttpCode(200)
+  async changePassword(
+    @CurrentSession() session: SessionContext,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response
+  ) {
+    await this.authService.changePassword(session, body);
+    clearSessionCookie(res);
+    return { success: true };
   }
 
   @Post('logout')

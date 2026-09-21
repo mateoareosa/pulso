@@ -21,13 +21,28 @@ import {
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
-type SaleWithRelations = Prisma.SaleGetPayload<{
+const saleRelations = {
+  items: true,
+  tenders: true,
+  user: { select: { id: true, name: true, email: true } },
+  adjustments: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      actor: { select: { id: true, name: true, email: true } },
+      items: true,
+    },
+  },
+};
+
+type SaleWithAdjustments = Prisma.SaleGetPayload<{ include: typeof saleRelations }>;
+type SaleWithoutAdjustments = Prisma.SaleGetPayload<{
   include: {
     items: true;
     tenders: true;
     user: { select: { id: true; name: true; email: true } };
   };
 }>;
+type SaleWithRelations = SaleWithAdjustments | SaleWithoutAdjustments;
 
 @Injectable()
 export class SalesService {
@@ -72,11 +87,7 @@ export class SalesService {
           idempotencyKey,
         },
       },
-      include: {
-        items: true,
-        tenders: true,
-        user: { select: { id: true, name: true, email: true } },
-      },
+      include: saleRelations,
     });
 
     if (existingSale) {
@@ -117,11 +128,7 @@ export class SalesService {
                   idempotencyKey,
                 },
               },
-              include: {
-                items: true,
-                tenders: true,
-                user: { select: { id: true, name: true, email: true } },
-              },
+              include: saleRelations,
             });
 
             if (concurrencyExisting) {
@@ -630,11 +637,7 @@ export class SalesService {
         skip,
         take: limit,
         orderBy: { createdAtUtc: 'desc' },
-        include: {
-          items: true,
-          tenders: true,
-          user: { select: { id: true, name: true, email: true } },
-        },
+        include: saleRelations,
       }),
       this.prisma.sale.count({ where }),
     ]);
@@ -655,11 +658,7 @@ export class SalesService {
         tenantId: session.tenantId,
         locationId: session.locationId,
       },
-      include: {
-        items: true,
-        tenders: true,
-        user: { select: { id: true, name: true, email: true } },
-      },
+      include: saleRelations,
     });
 
     if (!sale) {
@@ -708,6 +707,28 @@ export class SalesService {
         receivedAmountCents: t.receivedAmountCents ?? null,
         changeAmountCents: t.changeAmountCents ?? null,
         reference: t.reference ?? null,
+      })),
+      adjustments: ('adjustments' in sale ? sale.adjustments : undefined)?.map((adjustment) => ({
+        id: adjustment.id,
+        type: adjustment.type,
+        status: adjustment.status,
+        reason: adjustment.reason,
+        totalCents: adjustment.totalCents,
+        refundTender: adjustment.refundTender as TenderType,
+        refundStatus: adjustment.refundStatus as 'COMPLETED' | 'PENDING',
+        actor: adjustment.actor,
+        createdAt:
+          adjustment.createdAt instanceof Date
+            ? adjustment.createdAt.toISOString()
+            : adjustment.createdAt,
+        items: adjustment.items.map((item) => ({
+          id: item.id,
+          saleItemId: item.saleItemId,
+          productId: item.productId,
+          quantity: item.quantity.toString(),
+          unitPriceCents: item.unitPriceCents,
+          totalCents: item.totalCents,
+        })),
       })),
     };
   }

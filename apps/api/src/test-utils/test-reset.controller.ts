@@ -46,9 +46,33 @@ export class TestResetController {
       throw new NotFoundException('User not found');
     }
 
-    await this.prisma.tenantMembership.updateMany({
+    const memberships = await this.prisma.tenantMembership.findMany({
       where: { userId: user.id },
-      data: { role: body.role },
+      include: {
+        tenant: {
+          select: { locations: { where: { isActive: true }, select: { id: true } } },
+        },
+      },
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tenantMembership.updateMany({
+        where: { userId: user.id },
+        data: { role: body.role },
+      });
+
+      if (body.role !== 'OWNER') {
+        await tx.membershipLocation.createMany({
+          data: memberships.flatMap((membership) =>
+            membership.tenant.locations.map((location) => ({
+              tenantId: membership.tenantId,
+              membershipId: membership.id,
+              locationId: location.id,
+            }))
+          ),
+          skipDuplicates: true,
+        });
+      }
     });
 
     return { success: true, role: body.role };

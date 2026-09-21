@@ -3,6 +3,49 @@ import { z } from 'zod';
 export const TenderTypeSchema = z.enum(['CASH', 'DEBIT', 'CREDIT', 'TRANSFER', 'OTHER']);
 export type TenderType = z.infer<typeof TenderTypeSchema>;
 
+export const SaleAdjustmentTypeSchema = z.enum(['RETURN', 'VOID']);
+export type SaleAdjustmentType = z.infer<typeof SaleAdjustmentTypeSchema>;
+
+export const SaleAdjustmentStatusSchema = z.enum(['COMPLETED', 'PENDING']);
+export type SaleAdjustmentStatus = z.infer<typeof SaleAdjustmentStatusSchema>;
+
+const AdjustmentReasonSchema = z.string().trim().min(1).max(500);
+
+export const ReturnSaleCommandSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+    reason: AdjustmentReasonSchema,
+    items: z
+      .array(
+        z.object({
+          saleItemId: z.string().min(1),
+          quantity: z.number().positive().max(999999.9999),
+        })
+      )
+      .min(1),
+    refundTender: TenderTypeSchema.optional(),
+  })
+  .strict()
+  .superRefine((command, ctx) => {
+    const ids = command.items.map((item) => item.saleItemId);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Cada línea de venta puede devolverse una sola vez por operación.',
+        path: ['items'],
+      });
+    }
+  });
+export type ReturnSaleCommand = z.infer<typeof ReturnSaleCommandSchema>;
+
+export const VoidSaleCommandSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+    reason: AdjustmentReasonSchema,
+  })
+  .strict();
+export type VoidSaleCommand = z.infer<typeof VoidSaleCommandSchema>;
+
 export const SaleLineSchema = z.object({
   productId: z.string().min(1),
   name: z.string().min(1),
@@ -141,8 +184,51 @@ export const SaleResponseSchema = z.object({
     .optional(),
   items: z.array(SaleItemResponseSchema).optional(),
   tenders: z.array(SaleTenderResponseSchema).optional(),
+  adjustments: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: SaleAdjustmentTypeSchema,
+        status: SaleAdjustmentStatusSchema,
+        reason: z.string(),
+        totalCents: z.number().int().nonnegative(),
+        refundTender: TenderTypeSchema,
+        refundStatus: z.enum(['COMPLETED', 'PENDING']),
+        actor: z.object({ id: z.string(), name: z.string(), email: z.string() }),
+        createdAt: z.string(),
+        items: z.array(
+          z.object({
+            id: z.string(),
+            saleItemId: z.string(),
+            productId: z.string(),
+            quantity: z.string(),
+            unitPriceCents: z.number().int(),
+            totalCents: z.number().int(),
+          })
+        ),
+      })
+    )
+    .optional(),
 });
 export type SaleResponse = z.infer<typeof SaleResponseSchema>;
+
+export const SaleAdjustmentResponseSchema = z.object({
+  adjustment: SaleResponseSchema.shape.adjustments.unwrap().element,
+  sale: SaleResponseSchema,
+  idempotentReplay: z.boolean(),
+});
+export type SaleAdjustmentResponse = z.infer<typeof SaleAdjustmentResponseSchema>;
+
+export const SALE_ADJUSTMENT_ERROR_CODES = [
+  'SALE_NOT_COMPLETED',
+  'RETURN_QUANTITY_EXCEEDED',
+  'VOID_AFTER_RETURN',
+  'LOCATION_SCOPE',
+  'SHIFT_REQUIRED',
+  'NON_CASH_REFUND_UNSUPPORTED',
+  'IDEMPOTENCY_CONFLICT',
+] as const;
+export type SaleAdjustmentErrorCode = (typeof SALE_ADJUSTMENT_ERROR_CODES)[number];
 
 export const ProcessSaleResponseSchema = z.object({
   success: z.boolean(),

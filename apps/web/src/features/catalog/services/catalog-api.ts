@@ -10,6 +10,8 @@ import type {
   UpdateLocationSettingsCommand,
   CreateStockAdjustmentCommand,
   StockMovementResponse,
+  ProductImportPreviewResponse,
+  ProductImportResult,
 } from '@pulso/contracts';
 
 export const catalogApi = {
@@ -118,5 +120,21 @@ export const catalogApi = {
 
   async fetchStockMovements(id: string): Promise<StockMovementResponse[]> {
     return await apiRequest<StockMovementResponse[]>(`/api/products/${id}/stock-movements`);
+  },
+
+  async previewProductImport(file: File): Promise<ProductImportPreviewResponse> {
+    const form = new FormData();
+    form.append('file', file);
+    return await apiRequest<ProductImportPreviewResponse>('/api/products/import/preview', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  async commitProductImport(previewToken: string): Promise<ProductImportResult> {
+    return await apiRequest<ProductImportResult>('/api/products/import/commit', {
+      method: 'POST',
+      body: JSON.stringify({ previewToken, confirmation: true }),
+    });
   },
 };

@@ -53,6 +53,9 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
 
   return (
     <div
+      className="ticket-ledger-view ticket-ledger-oversight"
+      role="region"
+      aria-label="Historial de turnos de caja"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -65,25 +68,26 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
     >
       {/* Header */}
       <div>
-        <h2 style={{ fontSize: 'var(--text-lg, 18px)', fontWeight: 900, margin: 0 }}>
+        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 900, margin: 0 }}>
           Historial de Turnos de Caja
         </h2>
-        <div style={{ fontSize: 'var(--text-xs, 12px)', color: 'var(--color-ink-muted, #666)' }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)' }}>
           Auditoría de turnos pasados, arqueos de efectivo y discrepancias operativas.
         </div>
       </div>
 
       {/* Filter Bar */}
       <form
+        className="ticket-ledger-filter ticket-ledger-surface"
         onSubmit={handleFilter}
         style={{
           display: 'flex',
           gap: '10px',
           alignItems: 'flex-end',
           flexWrap: 'wrap',
-          backgroundColor: 'var(--color-surface, #fff)',
-          border: '1px solid var(--color-border, #ddd)',
-          borderRadius: 'var(--radius-xs, 4px)',
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-xs)',
           padding: '12px 16px',
         }}
       >
@@ -92,9 +96,9 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
             htmlFor="history-from-date"
             style={{
               display: 'block',
-              fontSize: 'var(--text-xs, 11px)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 700,
-              color: 'var(--color-ink-muted, #666)',
+              color: 'var(--color-ink-muted)',
               marginBottom: '2px',
             }}
           >
@@ -103,15 +107,16 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
           <input
             id="history-from-date"
             type="date"
+            className="ticket-ledger-control"
             data-testid="shift-history-from-input"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             style={{
               padding: '6px 8px',
-              fontSize: 'var(--text-xs, 12px)',
-              borderRadius: 'var(--radius-xs, 4px)',
-              border: '1px solid var(--color-border, #ccc)',
-              backgroundColor: 'var(--color-surface, #fff)',
+              fontSize: 'var(--text-xs)',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
               color: 'var(--color-ink)',
             }}
           />
@@ -122,9 +127,9 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
             htmlFor="history-to-date"
             style={{
               display: 'block',
-              fontSize: 'var(--text-xs, 11px)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 700,
-              color: 'var(--color-ink-muted, #666)',
+              color: 'var(--color-ink-muted)',
               marginBottom: '2px',
             }}
           >
@@ -132,16 +137,17 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
           </label>
           <input
             id="history-to-date"
+            className="ticket-ledger-control"
             type="date"
             data-testid="shift-history-to-input"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             style={{
               padding: '6px 8px',
-              fontSize: 'var(--text-xs, 12px)',
-              borderRadius: 'var(--radius-xs, 4px)',
-              border: '1px solid var(--color-border, #ccc)',
-              backgroundColor: 'var(--color-surface, #fff)',
+              fontSize: 'var(--text-xs)',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
               color: 'var(--color-ink)',
             }}
           />
@@ -152,9 +158,9 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
             htmlFor="history-status-select"
             style={{
               display: 'block',
-              fontSize: 'var(--text-xs, 11px)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 700,
-              color: 'var(--color-ink-muted, #666)',
+              color: 'var(--color-ink-muted)',
               marginBottom: '2px',
             }}
           >
@@ -162,14 +168,15 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
           </label>
           <select
             id="history-status-select"
+            className="ticket-ledger-control"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'OPEN' | 'CLOSED' | '')}
             style={{
               padding: '6px 8px',
-              fontSize: 'var(--text-xs, 12px)',
-              borderRadius: 'var(--radius-xs, 4px)',
-              border: '1px solid var(--color-border, #ccc)',
-              backgroundColor: 'var(--color-surface, #fff)',
+              fontSize: 'var(--text-xs)',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
               color: 'var(--color-ink)',
               minHeight: '32px',
             }}
@@ -182,6 +189,7 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
 
         <button
           type="submit"
+          className="ticket-ledger-control ticket-ledger-action ticket-ledger-action--primary"
           data-testid="shift-history-filter-button"
           disabled={isLoading}
           style={{
@@ -189,12 +197,12 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
             alignItems: 'center',
             gap: '4px',
             padding: '6px 14px',
-            fontSize: 'var(--text-xs, 12px)',
+            fontSize: 'var(--text-xs)',
             fontWeight: 800,
-            backgroundColor: 'var(--color-brand, #0066cc)',
-            color: '#fff',
+            backgroundColor: 'var(--color-pulse-solid)',
+            color: 'var(--color-surface)',
             border: 'none',
-            borderRadius: 'var(--radius-xs, 4px)',
+            borderRadius: 'var(--radius-xs)',
             cursor: isLoading ? 'not-allowed' : 'pointer',
             minHeight: '32px',
           }}
@@ -207,13 +215,14 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
       {error && (
         <div
           role="alert"
+          className="ticket-ledger-alert ticket-ledger-alert--error"
           style={{
-            backgroundColor: 'rgba(220, 53, 69, 0.12)',
-            color: 'var(--color-danger, #dc3545)',
-            border: '1px solid var(--color-danger, #dc3545)',
-            borderRadius: 'var(--radius-xs, 4px)',
+            backgroundColor: 'var(--color-tomato-soft)',
+            color: 'var(--color-tomato-solid)',
+            border: '1px solid var(--color-tomato-solid)',
+            borderRadius: 'var(--radius-xs)',
             padding: '10px 14px',
-            fontSize: 'var(--text-xs, 12px)',
+            fontSize: 'var(--text-xs)',
             fontWeight: 700,
           }}
         >
@@ -223,28 +232,30 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
 
       {/* History Table */}
       <div
+        className="ticket-ledger-surface"
         style={{
-          backgroundColor: 'var(--color-surface, #fff)',
-          border: '1px solid var(--color-border, #ddd)',
-          borderRadius: 'var(--radius-md, 8px)',
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)',
           overflow: 'hidden',
         }}
       >
-        <div style={{ overflowX: 'auto' }}>
+        <div className="ticket-ledger-table-wrap" style={{ overflowX: 'auto' }}>
           <table
             data-testid="shift-history-table"
+            className="ticket-ledger-table"
             style={{
               width: '100%',
               borderCollapse: 'collapse',
-              fontSize: 'var(--text-xs, 12px)',
+              fontSize: 'var(--text-xs)',
               textAlign: 'left',
             }}
           >
             <thead>
               <tr
                 style={{
-                  borderBottom: '1px solid var(--color-border, #eee)',
-                  backgroundColor: 'var(--color-surface-raised, rgba(0,0,0,0.02))',
+                  borderBottom: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--color-surface-sunken)',
                 }}
               >
                 <th style={{ padding: '10px 12px', fontWeight: 800 }}>APERTURA</th>
@@ -269,13 +280,29 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
+                  <td
+                    colSpan={9}
+                    className="ticket-ledger-empty"
+                    style={{
+                      padding: '32px',
+                      textAlign: 'center',
+                      color: 'var(--color-ink-muted)',
+                    }}
+                  >
                     Cargando historial...
                   </td>
                 </tr>
               ) : shifts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
+                  <td
+                    colSpan={9}
+                    className="ticket-ledger-empty"
+                    style={{
+                      padding: '32px',
+                      textAlign: 'center',
+                      color: 'var(--color-ink-muted)',
+                    }}
+                  >
                     No se encontraron turnos con los filtros seleccionados.
                   </td>
                 </tr>
@@ -298,22 +325,19 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
                   let diffLabel = '—';
                   if (diff != null) {
                     if (diff === 0) {
-                      diffColor = 'var(--color-success, #28a745)';
+                      diffColor = 'var(--color-pulse-text)';
                       diffLabel = '$ 0,00';
                     } else if (diff > 0) {
-                      diffColor = '#0056b3';
+                      diffColor = 'var(--color-pulse-text)';
                       diffLabel = `+ ${Money.fromCents(diff).format()}`;
                     } else {
-                      diffColor = 'var(--color-danger, #dc3545)';
+                      diffColor = 'var(--color-tomato-solid)';
                       diffLabel = `- ${Money.fromCents(Math.abs(diff)).format()}`;
                     }
                   }
 
                   return (
-                    <tr
-                      key={s.id}
-                      style={{ borderBottom: '1px solid var(--color-border, #f0f0f0)' }}
-                    >
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                       <td
                         style={{ padding: '10px 12px', fontFamily: 'monospace, var(--font-mono)' }}
                       >
@@ -365,16 +389,19 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span
+                          className={`ticket-ledger-stamp ${s.status === 'OPEN' ? 'ticket-ledger-stamp--success' : 'ticket-ledger-stamp--warning'}`}
                           style={{
                             display: 'inline-block',
                             padding: '2px 6px',
                             borderRadius: '4px',
                             backgroundColor:
                               s.status === 'OPEN'
-                                ? 'rgba(40, 167, 69, 0.12)'
-                                : 'rgba(108, 117, 125, 0.12)',
+                                ? 'var(--color-pulse-soft)'
+                                : 'var(--color-surface-sunken)',
                             color:
-                              s.status === 'OPEN' ? 'var(--color-success, #28a745)' : '#6c757d',
+                              s.status === 'OPEN'
+                                ? 'var(--color-pulse-text)'
+                                : 'var(--color-ink-muted)',
                             fontWeight: 800,
                           }}
                         >
@@ -384,15 +411,16 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                         <button
                           type="button"
+                          className="ticket-ledger-control ticket-ledger-action"
                           onClick={() => onSelectShift(s.id)}
                           style={{
                             padding: '4px 8px',
-                            fontSize: 'var(--text-xs, 11px)',
+                            fontSize: 'var(--text-xs)',
                             fontWeight: 800,
                             backgroundColor: 'transparent',
-                            color: 'var(--color-brand, #0066cc)',
-                            border: '1px solid var(--color-brand, #0066cc)',
-                            borderRadius: 'var(--radius-xs, 4px)',
+                            color: 'var(--color-pulse-solid)',
+                            border: '1px solid var(--color-pulse-solid)',
+                            borderRadius: 'var(--radius-xs)',
                             cursor: 'pointer',
                           }}
                         >
@@ -409,14 +437,15 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
 
         {/* Pagination Bar */}
         <div
+          className="ticket-ledger-pagination"
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '10px 16px',
-            backgroundColor: 'var(--color-surface-raised, rgba(0,0,0,0.02))',
-            borderTop: '1px solid var(--color-border, #eee)',
-            fontSize: 'var(--text-xs, 12px)',
+            backgroundColor: 'var(--color-surface-sunken)',
+            borderTop: '1px solid var(--color-border)',
+            fontSize: 'var(--text-xs)',
           }}
         >
           <div>
@@ -425,15 +454,16 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <button
               type="button"
+              className="ticket-ledger-control"
               disabled={page <= 1 || isLoading}
               onClick={() => handlePageChange(page - 1)}
               style={{
                 padding: '4px 10px',
-                fontSize: 'var(--text-xs, 12px)',
+                fontSize: 'var(--text-xs)',
                 fontWeight: 800,
-                backgroundColor: 'var(--color-surface, #fff)',
-                border: '1px solid var(--color-border, #ccc)',
-                borderRadius: 'var(--radius-xs, 4px)',
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-xs)',
                 cursor: page <= 1 || isLoading ? 'not-allowed' : 'pointer',
               }}
             >
@@ -444,15 +474,16 @@ export const CashShiftsHistoryView: React.FC<CashShiftsHistoryViewProps> = ({
             </span>
             <button
               type="button"
+              className="ticket-ledger-control"
               disabled={page >= totalPages || isLoading}
               onClick={() => handlePageChange(page + 1)}
               style={{
                 padding: '4px 10px',
-                fontSize: 'var(--text-xs, 12px)',
+                fontSize: 'var(--text-xs)',
                 fontWeight: 800,
-                backgroundColor: 'var(--color-surface, #fff)',
-                border: '1px solid var(--color-border, #ccc)',
-                borderRadius: 'var(--radius-xs, 4px)',
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-xs)',
                 cursor: page >= totalPages || isLoading ? 'not-allowed' : 'pointer',
               }}
             >

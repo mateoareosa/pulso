@@ -32,6 +32,16 @@
   --color-surface-sunken: oklch(0.93 0.015 85);
   --color-border: oklch(0.82 0.02 85);
   --color-border-bold: oklch(0.18 0.03 160);
+  /* Semantic UI primitives shared by operational screens. */
+  --color-surface-raised: oklch(1 0 0);
+  --color-surface-subtle: oklch(0.975 0.008 85);
+  --color-overlay: oklch(0.12 0.02 160 / 0.58);
+  --color-success-solid: var(--color-pulse-solid);
+  --color-success-soft: var(--color-pulse-soft);
+  --color-success-text: var(--color-pulse-text);
+  --color-danger-solid: var(--color-tomato-solid);
+  --color-danger-soft: var(--color-tomato-soft);
+  --color-danger-text: var(--color-tomato-text);
 
   /* Typography Pair */
   --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -53,16 +63,20 @@
   --color-ribbon-border: oklch(0.14 0.03 160);
 
   /* Radii - Industrial sharp troquel with 2-4px tactile softness */
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
 
   /* Shadows - Crisp hard-edged stamps (no blurry SaaS glow) */
   --shadow-key: 0 2px 0 var(--color-ink);
   --shadow-key-pressed: 0 0 0 transparent;
   --shadow-receipt: 2px 3px 0 rgba(0, 0, 0, 0.09);
-  --shadow-modal: 0 12px 32px rgba(15, 23, 42, 0.35);
+  --shadow-modal: 0 3px 0 rgba(15, 23, 42, 0.22);
+  --shadow-control: 0 2px 0 var(--color-ink);
+  --shadow-overlay: 0 3px 0 rgba(15, 23, 42, 0.22);
+  --table-cell-padding-y: 0.625rem;
+  --table-cell-padding-x: 0.75rem;
 
   /* Motion - Transform and opacity only */
   --duration-fast: 120ms;
@@ -97,6 +111,9 @@
 
   --color-surface: oklch(0.14 0.025 240);
   --color-surface-sunken: oklch(0.1 0.025 240);
+  --color-surface-raised: oklch(0.18 0.025 240);
+  --color-surface-subtle: oklch(0.16 0.025 240);
+  --color-overlay: oklch(0.02 0.02 240 / 0.72);
   --color-border: oklch(0.28 0.025 240);
   --color-border-bold: oklch(0.88 0.02 85);
 
