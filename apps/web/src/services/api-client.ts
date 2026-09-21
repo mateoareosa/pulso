@@ -6,6 +6,15 @@ import {
 } from '@pulso/contracts';
 import { ActionPreviewResponseSchema, type ActionPreviewResponse } from '@pulso/contracts';
 
+// Empty by default keeps local development on the Vite /api proxy. In hosted
+// builds VITE_API_URL points directly at the HTTPS API service (Render).
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+
+function resolveApiUrl(endpoint: string): string {
+  if (/^https?:\/\//i.test(endpoint)) return endpoint;
+  return `${API_BASE_URL}${endpoint}`;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -32,7 +41,7 @@ export async function apiRequest<T>(endpoint: string, options: RequestInit = {})
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetch(resolveApiUrl(endpoint), {
       ...options,
       headers,
       credentials: 'include', // Always send and receive session cookies
